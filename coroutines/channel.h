@@ -47,37 +47,6 @@ namespace Coroutines {
     size_t bytesPerElem() const { return bytes_per_elem; }
   };
 
-  // -----------------------------------------------------
-  template< typename TObj >
-  bool pull(TChannel* ch, TObj& obj) {
-    assert(ch);
-    assert(&obj);
-    while (ch->empty() && !ch->closed()) {
-      TWatchedEvent evt(ch, obj, EVT_CHANNEL_CAN_PULL);
-      wait(&evt, 1);
-    }
-
-    if (ch->closed() && ch->empty())
-      return false;
-    ch->pull(&obj, sizeof(obj));
-    return true;
-  }
-
-  template< typename TObj >
-  bool push(TChannel* ch, const TObj& obj) {
-    assert(ch);
-    assert(&obj);
-    while (ch->full() && !ch->closed()) {
-      TWatchedEvent evt(ch, obj, EVT_CHANNEL_CAN_PUSH);
-      wait(&evt, 1);
-    }
-    if (ch->closed())
-      return false;
-    ch->push(&obj, sizeof(obj));
-    return true;
-  }
-
-
 }
 
 #endif

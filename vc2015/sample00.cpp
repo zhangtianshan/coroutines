@@ -1,11 +1,16 @@
 #include "../coroutines/coroutines.h"
 #include "../coroutines/channel.h"
-#define NOMINMAX
-#include <windows.h>        // ::GetAsyncKey
+
+#include <cstdarg>
 #include <vector>
 #include <cassert>
 #include <algorithm>        // std::min
     
+#ifdef WIN32
+#define vsnprintf _vsnprintf
+#endif
+
+
 typedef unsigned char u8;
 
 // -------------------------------------------------------
@@ -36,7 +41,9 @@ void waitAll( std::initializer_list<THandle> handles ) {
 
 // Wait while the key is not pressed 
 void waitKey(int c) {
+#ifdef WIN32
   wait([c]() { return (::GetAsyncKeyState( c ) & 0x8000 ) == 0; });
+#endif
 }
 
 // --------------------------------------------------
@@ -44,7 +51,7 @@ void dbg(const char *fmt, ...) {
   char buf[1024];
   va_list ap;
   va_start(ap, fmt);
-  int n = _vsnprintf_s(buf, sizeof(buf) - 1, fmt, ap);
+  int n = vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
   if (n < 0)
     buf[1023] = 0x00;
   va_end(ap);

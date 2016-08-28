@@ -1,5 +1,6 @@
 #include "channel.h"
 #include "coroutines.h"
+#include "events.h"
 
 namespace Coroutines {
 

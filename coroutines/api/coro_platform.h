@@ -1,10 +1,14 @@
 #ifndef INC_COROUTINES_API_PLATFORM_H_
 #define INC_COROUTINES_API_PLATFORM_H_
 
+#include <vector>
+#include <cstdint>
+
 class TCoroPlatform {
-  void*       fiber;
-  bool        is_main;
-  unsigned    stack_size;
+  void*                  fiber;
+  bool                   is_main;
+  std::vector< uint8_t > stack;
+  uint32_t               stack_requested_size;
   
   typedef void (TStartFn)(void *);
 
