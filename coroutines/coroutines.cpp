@@ -64,6 +64,17 @@ namespace Coroutines {
 
     // ----------------------------------------------------------
     TCoro* findFree() {
+
+      for (auto& co : coros) {
+        if (co.state != TCoro::FREE && co.state != TCoro::UNINITIALIZED)
+          continue;
+        co.state = TCoro::RUNNING;
+        return &co;
+      }
+
+      return nullptr;
+
+      /*
       //dump("findfree");
       // Find a free slot
       int idx = first_free;
@@ -91,6 +102,7 @@ namespace Coroutines {
         coros[first_free].prev_id = INVALID_ID;
 
       return &co;
+      */
     }
 
     // --------------------------
@@ -206,6 +218,26 @@ namespace Coroutines {
     assert(co_main);
 
     int nactives = 0;
+    for (auto& co : coros) {
+      if (co.is_main)
+        continue;
+      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED)
+        continue;
+
+      ++nactives;
+      if (co.state == TCoro::WAITING_FOR_EVENT)
+        continue;
+
+      h_current = co.this_handle;
+      co_main->switchTo(&co);
+      h_current = h_main;
+    }
+      /*
+
+    auto co_main = byHandle(h_main);
+    assert(co_main);
+
+    int nactives = 0;
     int idx = first_in_use;
     while (idx != INVALID_ID) {
       auto& co = coros[idx];
@@ -230,6 +262,8 @@ namespace Coroutines {
       h_current = THandle();
     }
     h_current = h_main;
+    */
+
     return nactives;
   }
 
@@ -243,15 +277,15 @@ namespace Coroutines {
       co.this_handle.id = idx;
       co.this_handle.age = 1;
 
-      if (idx > 0)
-        co.prev_id = idx - 1;
-      else
-        co.prev_id = INVALID_ID;
+      //if (idx > 0)
+      //  co.prev_id = idx - 1;
+      //else
+      //  co.prev_id = INVALID_ID;
 
-      if (idx != coros.size() - 1)
-        co.next_id = idx + 1;
-      else
-        co.next_id = INVALID_ID;
+      //if (idx != coros.size() - 1)
+      //  co.next_id = idx + 1;
+      //else
+      //  co.next_id = INVALID_ID;
 
       ++idx;
     }
@@ -376,6 +410,35 @@ namespace Coroutines {
       co->event_waking_me_up = we;
       co->state = internal::TCoro::RUNNING;
     }
+  }
+
+  // ---------------------------------------------------
+  void switchTo(THandle h) {
+    auto co = internal::byHandle(h);
+    if (co) {
+      co->switchTo(co);
+    }
+  }
+
+  THandle createOne(void* new_fiber) {
+    auto co = internal::findFree();
+    co->fiber = new_fiber;
+    co->state = internal::TCoro::RUNNING;
+
+    auto co_main = internal::byHandle(internal::h_main);
+    internal::h_current = co->this_handle;
+    co_main->switchTo(co);
+
+    return co->this_handle;
+  }
+
+  void destroyCurrent() {
+    THandle h_curr = current();
+    auto co = internal::byHandle(h_curr);
+    assert(co->is_main == false);
+    co->state = internal::TCoro::FREE;
+    auto co_main = internal::byHandle(internal::h_main);
+    co_main->switchTo(co_main);
   }
 
 }

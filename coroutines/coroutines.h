@@ -33,8 +33,6 @@ namespace Coroutines {
     template< typename TFn >
     static void bootstrap(void* context) {
       TFn* fn = static_cast<TFn*> (context);
-      printf("bootstrap recv context as %p\n", context);
-      printf("bootstrap recv fn as %p\n", fn);
       (*fn)();
       epilogue( );
     }
@@ -119,6 +117,9 @@ namespace Coroutines {
   static const int wait_timedout = ~((int)0);
   int wait(TWatchedEvent* watched_events, int nevents_to_watch, TTimeDelta timeout = no_timeout);
   void wakeUp(TWatchedEvent* we);
+  void switchTo(THandle h);
+  THandle createOne(void* new_fiber);
+  void destroyCurrent();
 
 }
 

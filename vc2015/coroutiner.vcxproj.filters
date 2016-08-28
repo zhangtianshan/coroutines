@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\coroutines\coroutines.cpp">
+      <Filter>coroutines</Filter>
+    </ClCompile>
+    <ClCompile Include="sample00.cpp" />
+    <ClCompile Include="..\coroutines\channel.cpp">
+      <Filter>coroutines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\coroutines\timeline.cpp" />
+    <ClCompile Include="..\coroutines\api\coro_platform.cpp">
+      <Filter>coroutines\api</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="coroutines">
+      <UniqueIdentifier>{a6fd2645-e4d2-4756-b36f-2cece587e87e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="coroutines\api">
+      <UniqueIdentifier>{366344ac-6825-417d-b8a5-ba0e8b57b126}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\coroutines\coroutines.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\list.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\channel.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\timeline.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\api\taskimpl.h">
+      <Filter>coroutines\api</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\api\coro_platform.h">
+      <Filter>coroutines\api</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README" />
+  </ItemGroup>
+</Project>

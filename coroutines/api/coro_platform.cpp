@@ -32,17 +32,7 @@ bool TCoroPlatform::initAsMain() {
   return (fiber != nullptr);
 }
 
-struct startUpInformation {
-  TCoroPlatform::TStartFn* func;
-  void*                    context;
-};
-
-static startUpInformation globalCallbackBlock;
-
 void TCoroPlatform::start(TStartFn fn, void* start_arg) {
-
-  globalCallbackBlock.func = fn;
-  globalCallbackBlock.context = start_arg;
 
   if (fiber && !is_main)
     ::DeleteFiber(fiber);
