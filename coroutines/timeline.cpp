@@ -13,7 +13,11 @@ namespace Coroutines {
     return current_timestamp;
   }
 
-  void updateCurrentTime(TTimeStamp delta_ticks) {
+  void resetTimer() {
+    current_timestamp = 0;
+  }
+
+  void updateCurrentTime(TTimeDelta delta_ticks) {
     current_timestamp += delta_ticks;
     auto we = static_cast<TWatchedEvent*>( waiting_for_timeouts.first );
     while (we) {

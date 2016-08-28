@@ -176,6 +176,7 @@ void doFn4(int nelems, int step) {
 // ----------------------------------------
 // async series + parallel
 void demo_async_series() {
+  resetTimer();
 
   // Run some items in serie, then fn2 runs in parallel
   auto co_series = start([]() {
@@ -192,6 +193,7 @@ void demo_async_series() {
 
 // ----------------------------------------
 void demo_channels() {
+  resetTimer();
 
   // to send/recv data between co's
   TChannel* ch1 = new TChannel(5, sizeof(int));
@@ -209,6 +211,7 @@ void demo_channels() {
     }
 
     dbg("co1 end\n");
+    assert(now() == 2);
   });
 
   // co2 produces 10 elems
@@ -226,6 +229,7 @@ void demo_channels() {
     ch1->close();
 
     dbg("co2 ends\n");
+    assert(now() == 1);
   });
   
   //for( int i=0; i<3; ++i )
@@ -265,21 +269,24 @@ void demo_channels_send_from_main() {
   runUntilAllCoroutinesEnd();
 }
 
-
 // ----------------------------------------
 // Wait for another coroutine to finish
+// ----------------------------------------
 void demo05_wait2coroutines() {
+  resetTimer();
 
   auto co1a = start([]() {
     dbg("co1a begin\n");
     wait(nullptr, 0, 5);
     dbg("co1a end\n");
+    assert(now() == 5);
   });
 
   auto co1b = start([]() {
     dbg("co1b begins\n");
     wait(nullptr, 0, 10);
     dbg("co1b ends\n");
+    assert(now() == 10);
   });
 
   auto co2 = start([co1a, co1b]() {
@@ -297,12 +304,17 @@ void demo05_wait2coroutines() {
       wait(evts, n);
     }
     dbg("co2 ends\n");
+    assert(now() == 10);
   });
 
   runUntilAllCoroutinesEnd();
 }
 
+// ----------------------------------------
+//
+// ----------------------------------------
 void wait_with_timeout() {
+  resetTimer();
   auto co1a = start([]() {
     dbg("co1a begin. Will wait for 100 ticks\n");
     wait(nullptr, 0, 100);
@@ -314,65 +326,27 @@ void wait_with_timeout() {
     int rc = wait(&evt, 1, 5);
     dbg("co2 wait finishes. k = %d\n", rc);
     assert(rc == wait_timedout);
+    assert(now() == 5);
     dbg("co2 waiting again, now for 200 ticks\n");
     rc = wait(&evt, 1, 200);
     dbg("co2 wait finishes. k = %d\n", rc);
     assert(rc == 0);
+    assert(now() == 100);
   });
   runUntilAllCoroutinesEnd();
 }
-
-template< typename TFn >
-static void bootstrap(void* context) {
-  TFn* fn = static_cast<TFn*> (context);
-  (*fn)();
-  destroyCurrent();
-}
-
-template< typename TFn >
-void* startFiber(TFn fn) {
-  void* new_fiber = ::CreateFiber(128 * 1024, &bootstrap<TFn>, &fn);
-  createOne(new_fiber);
-  return new_fiber;
-}
-
-void crash() {
-  //::ConvertThreadToFiber(nullptr);
-  TChannel* ch1 = new TChannel(5, sizeof(int));
-  auto f0 = startFiber([ch1]() {
-    dbg("co1 begin\n");
-    assert(ch1->bytesPerElem() == 4);
-    while (true) {
-      int data = 0;
-      if (!pull(ch1, data))
-        break;
-      dbg("co1 has pulled %d from %p\n", data, ch1);
-    }
-    dbg("co1 end\n");
-  });
-  int v = 1000;
-  push(ch1, v);
-  push(ch1, v);
-  dbg("Main pushes 100 twice\n");
-  ch1->close();
-
-  runUntilAllCoroutinesEnd();
-}
-
 
 // ----------------------------------------
 int main() {
   Coroutines::initialize();
   //demo00();
   //demo_enter_and_exit();
-  //demo_async_series();
-  //demo_channels();
+  demo_async_series();
+  demo_channels();
   //demo_channels_send_from_main();
-  //demo05_wait2coroutines();
-  //wait_with_timeout();
+  demo05_wait2coroutines();
+  wait_with_timeout();
   
-  crash();
-
   return 0;
 }
 

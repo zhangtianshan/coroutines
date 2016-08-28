@@ -8,9 +8,11 @@
     <ClCompile Include="..\coroutines\channel.cpp">
       <Filter>coroutines</Filter>
     </ClCompile>
-    <ClCompile Include="..\coroutines\timeline.cpp" />
     <ClCompile Include="..\coroutines\api\coro_platform.cpp">
       <Filter>coroutines\api</Filter>
+    </ClCompile>
+    <ClCompile Include="..\coroutines\timeline.cpp">
+      <Filter>coroutines</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -33,9 +35,6 @@
     </ClInclude>
     <ClInclude Include="..\coroutines\timeline.h">
       <Filter>coroutines</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\api\taskimpl.h">
-      <Filter>coroutines\api</Filter>
     </ClInclude>
     <ClInclude Include="..\coroutines\api\coro_platform.h">
       <Filter>coroutines\api</Filter>

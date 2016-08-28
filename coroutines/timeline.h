@@ -12,6 +12,7 @@ namespace Coroutines {
   struct TWatchedEvent;
 
   TTimeStamp now();
+  void resetTimer();
   void updateCurrentTime(TTimeDelta delta_ticks);
   void registerTimeoutEvent(TWatchedEvent* we);
   void unregisterTimeoutEvent(TWatchedEvent* we);

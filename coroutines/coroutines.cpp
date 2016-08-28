@@ -219,7 +219,7 @@ namespace Coroutines {
 
     int nactives = 0;
     for (auto& co : coros) {
-      if (co.is_main)
+      if (co.isMain())
         continue;
       if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED)
         continue;
@@ -418,27 +418,6 @@ namespace Coroutines {
     if (co) {
       co->switchTo(co);
     }
-  }
-
-  THandle createOne(void* new_fiber) {
-    auto co = internal::findFree();
-    co->fiber = new_fiber;
-    co->state = internal::TCoro::RUNNING;
-
-    auto co_main = internal::byHandle(internal::h_main);
-    internal::h_current = co->this_handle;
-    co_main->switchTo(co);
-
-    return co->this_handle;
-  }
-
-  void destroyCurrent() {
-    THandle h_curr = current();
-    auto co = internal::byHandle(h_curr);
-    assert(co->is_main == false);
-    co->state = internal::TCoro::FREE;
-    auto co_main = internal::byHandle(internal::h_main);
-    co_main->switchTo(co_main);
   }
 
 }

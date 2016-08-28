@@ -154,7 +154,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\coroutines\api\coro_platform.h" />
-    <ClInclude Include="..\coroutines\api\taskimpl.h" />
     <ClInclude Include="..\coroutines\channel.h" />
     <ClInclude Include="..\coroutines\coroutines.h" />
     <ClInclude Include="..\coroutines\list.h" />

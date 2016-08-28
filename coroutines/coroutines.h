@@ -118,8 +118,6 @@ namespace Coroutines {
   int wait(TWatchedEvent* watched_events, int nevents_to_watch, TTimeDelta timeout = no_timeout);
   void wakeUp(TWatchedEvent* we);
   void switchTo(THandle h);
-  THandle createOne(void* new_fiber);
-  void destroyCurrent();
 
 }
 
