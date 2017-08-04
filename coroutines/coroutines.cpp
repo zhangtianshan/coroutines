@@ -53,9 +53,7 @@ namespace Coroutines {
         assert(co);
         co->caller_ctx = t;
         co->runUserFn();
-
-        // This will return to who called us
-        jump_fcontext(t.ctx, t.data);
+        co->returnToCaller();
       }
 
       static const size_t default_stack_size = 16 * 1024;
@@ -73,9 +71,14 @@ namespace Coroutines {
         ip.data = this;
       }
 
-      void run() {
+      void resume() {
         h_current = this_handle;
         ip = jump_fcontext(ip.ctx, ip.data);
+      }
+
+      void returnToCaller() {
+        h_current = THandle();
+        caller_ctx = jump_fcontext(caller_ctx.ctx, caller_ctx.data);
       }
 
     };
@@ -88,9 +91,11 @@ namespace Coroutines {
 
     // ----------------------------------------------------------
     TCoro* byHandle(THandle h) {
+
       // id must be in the valid range
       if (h.id >= coros.size())
         return nullptr;
+
       // if what we found matches the current age, we are a valid co
       TCoro* c = &coros[h.id];
       assert(c->this_handle.id == h.id);
@@ -162,8 +167,19 @@ namespace Coroutines {
       co_new->boot_fn_arg = boot_fn_arg;
       co_new->resetIP();
 
+      co_new->resume();
+
       return co_new->this_handle;
     }
+
+    // --------------------------------------------
+    struct TScheduler {
+      int nactives = 0;
+      int next_idx = 0;
+      int runActives();
+      bool runNextReady();
+    };
+    TScheduler scheduler;
 
   }
 
@@ -177,49 +193,42 @@ namespace Coroutines {
     return internal::byHandle(h) != nullptr;
   }
 
-  using namespace internal;
-
   // --------------------------------------------
-  struct TScheduler {
-    int nactives;
-    int next_idx = 0;
-    
-    int runActives() {
-      nactives = 0;
-      next_idx = 0;
-      while (next_idx < coros.size()) {
-        if (runNextReady())
-          ++nactives;
-      }
-      return nactives;
+  int internal::TScheduler::runActives() {
+    nactives = 0;
+    next_idx = 0;
+    while (next_idx < coros.size()) {
+      if (runNextReady())
+        ++nactives;
     }
+    return nactives;
+  }
 
-    bool runNextReady() {
-      // Find one ready
-      while (next_idx < coros.size()) {
-        auto& co = coros[next_idx];
-        ++next_idx;
-        if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED) {
-          continue;
-        }
-        co.run();
-        return true;
+  bool internal::TScheduler::runNextReady() {
+    // Find one ready
+    while (next_idx < coros.size()) {
+      auto& co = coros[next_idx];
+      ++next_idx;
+      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED) {
+        continue;
       }
-      return false;
+      co.resume();
+      return true;
     }
-  };
-  TScheduler scheduler;
+    return false;
+  }
 
   // --------------------------------------------
   void yield() {
+    assert(isHandle( current() ));
     auto co = internal::byHandle(current());
     assert(co);
-    jump_fcontext(co->caller_ctx.ctx, co->caller_ctx.data);
+    co->returnToCaller();
   }
 
   // ----------------------------------------------------------
   int executeActives() {
-    return scheduler.runActives();
+    return internal::scheduler.runActives();
   }
 
 }

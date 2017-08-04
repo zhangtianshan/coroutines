@@ -34,15 +34,15 @@ void basicTask(const char* title) {
   yield();
   dbg("%s after yield\n", title);
   yield();
+  dbg("%s after yield 2\n", title);
+  yield();
   //wait(nullptr, 0, 30);
   //dbg("After waiting 30 ticks we leave\n");
   dbg("%s leaves\n", title);
 }
 
-
-int main(int argc, char** argv) {
+void test_basic() {
   dbg("Main boots\n");
-
   auto f1 = []() { basicTask("co1"); };
   auto f2 = []() { basicTask("co2"); };
 
@@ -50,10 +50,71 @@ int main(int argc, char** argv) {
   auto co2 = start(f2);
 
   runUntilAllCoroutinesEnd();
+}
 
-  runUntilAllCoroutinesEnd();
 
+// ---------------------------------------------
+#include "coroutines/fcontext/fcontext.h"
+bool terminated = false;
+fcontext_transfer_t return_ip;
+fcontext_transfer_t ip;
 
+void api_dbg(const char *fmt, ...) {
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = _vsnprintf_s(buf, sizeof(buf) - 1, fmt, ap);
+  if (n < 0)
+    buf[1023] = 0x00;
+  va_end(ap);
+  printf("%04d : ip:%p rip:%p %s", (int)now(), ip.ctx, return_ip.ctx, buf);
+}
+
+void api_yield() {
+  return_ip = jump_fcontext(return_ip.ctx, return_ip.data);
+}
+
+void apiDoSomething() {
+  const char* title = "api";
+  api_dbg("%s boots\n", title);
+  api_yield();
+  api_dbg("%s after yield\n", title);
+  api_yield();
+  api_dbg("%s after yield 2\n", title);
+  api_yield();
+  api_dbg("%s leaves\n", title);
+}
+
+void apiFn(fcontext_transfer_t t) {
+  return_ip = t;
+  apiDoSomething();
+  terminated = true;
+  jump_fcontext(return_ip.ctx, return_ip.data);
+}
+
+void apiStep() {
+  ip = jump_fcontext(ip.ctx, ip.data);
+}
+
+void api_start() {
+  fcontext_stack_t stack = ::create_fcontext_stack();
+  ip.ctx = make_fcontext(stack.sptr, stack.ssize, &apiFn);
+  ip.data = nullptr;
+  api_dbg("Boot\n");
+  apiStep();
+}
+
+void test_api() {
+  api_start();
+  while (!terminated) {
+    api_dbg("MAIN\n");
+    apiStep();
+  }
+}
+
+int main(int argc, char** argv) {
+  //test_api();
+  test_basic();
   return 0;
 }
 

@@ -14,6 +14,7 @@ namespace Coroutines {
   struct THandle {
     uint16_t id = 0;
     uint16_t age = 0;
+    bool operator==(const THandle& other) const { return id == other.id && age == other.age; }
   };
 
   typedef void(*TBootFn)(void*);
