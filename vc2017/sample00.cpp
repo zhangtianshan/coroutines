@@ -1,13 +1,67 @@
+#include "coroutines/coroutines.h"
+#include <cstdarg>
+#include <cstdio>
+
+using namespace Coroutines;
+
+// --------------------------------------------------
+int current_time = 0;
+int now() { return current_time; }
+void updateCurrentTime(int delta) { current_time += delta; }
+
+void dbg(const char *fmt, ...) {
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = _vsnprintf_s(buf, sizeof(buf) - 1, fmt, ap);
+  if (n < 0)
+    buf[1023] = 0x00;
+  va_end(ap);
+  printf("%04d:%02d.%02d %s", (int)now(), current().id, current().age, buf);
+}
+
+void runUntilAllCoroutinesEnd() {
+  while (true) {
+    updateCurrentTime(1);
+    if (!executeActives())
+      break;
+  }
+  dbg("all done\n");
+}
+
+void basicTask(const char* title) {
+  dbg("%s boots\n", title);
+  yield();
+  dbg("%s after yield\n", title);
+  yield();
+  //wait(nullptr, 0, 30);
+  //dbg("After waiting 30 ticks we leave\n");
+  dbg("%s leaves\n", title);
+}
+
+
+int main(int argc, char** argv) {
+  dbg("Main boots\n");
+
+  auto f1 = []() { basicTask("co1"); };
+  auto f2 = []() { basicTask("co2"); };
+
+  auto co1 = start(f1);
+  auto co2 = start(f2);
+
+  runUntilAllCoroutinesEnd();
+
+  runUntilAllCoroutinesEnd();
+
+
+  return 0;
+}
+
+
+/*
 #include "../coroutines/coroutines.h"
 #include "../coroutines/channel.h"
-#define NOMINMAX
-#include <windows.h>        // ::GetAsyncKey
-#include <vector>
-#include <cassert>
-#include <algorithm>        // std::min
     
-typedef unsigned char u8;
-
 // -------------------------------------------------------
 // -------------------------------------------------------
 // -------------------------------------------------------
@@ -37,18 +91,6 @@ void waitAll( std::initializer_list<THandle> handles ) {
 // Wait while the key is not pressed 
 void waitKey(int c) {
   wait([c]() { return (::GetAsyncKeyState( c ) & 0x8000 ) == 0; });
-}
-
-// --------------------------------------------------
-void dbg(const char *fmt, ...) {
-  char buf[1024];
-  va_list ap;
-  va_start(ap, fmt);
-  int n = _vsnprintf_s(buf, sizeof(buf) - 1, fmt, ap);
-  if (n < 0)
-    buf[1023] = 0x00;
-  va_end(ap);
-  printf("%04d:%02d.%02d %s", (int)now(), current().id, current().age, buf);
 }
 
 void runUntilAllCoroutinesEnd() {
@@ -351,3 +393,4 @@ int main() {
 }
 
 
+*/

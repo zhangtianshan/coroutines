@@ -1,3 +1,4 @@
-vc2015/x64
-vc2015/*.opendb
-vc2015/*.db
+vc2017/x64
+vc2017/*.opendb
+vc2017/*.db
+vc2017/.vs
