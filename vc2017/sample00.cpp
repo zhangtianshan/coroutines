@@ -149,9 +149,9 @@ void test_wait_2_coroutines_with_timeout() {
       int n = 0;
       TWatchedEvent evts[2];
       if (isHandle(tcoA))
-        evts[n++] = TWatchedEvent(tcoA);
+        evts[n++] = tcoA;
       if (isHandle(tcoB))
-        evts[n++] = TWatchedEvent(tcoB);
+        evts[n++] = tcoB;
       if (!n) {
         dbg("Nothing else to wait\n");
         break;
@@ -168,35 +168,24 @@ void test_wait_2_coroutines_with_timeout() {
   //runUntilAllCoroutinesEnd();
 }
 
-// -----------------------------------------------------------
-int main(int argc, char** argv) {
-  test_demo_yield();
-  test_wait_time();
-  test_wait_co();
-  test_wait_all();
-  //test_wait_keys();
-  test_wait_2_coroutines_with_timeout();
-  return 0;
-}
-
-
-/*
-#include "../coroutines/channel.h"
-    
-// ----------------------------------------
-void demo_channels() {
+// ---------------------------------------------------------
+// Wait for any of the two coroutines to finish or timeout
+void test_channels() {
   resetTimer();
+  TSimpleDemo demo("test_channels");
 
   // to send/recv data between co's
-  TChannel* ch1 = new TChannel(5, sizeof(int));
+  TChannel* ch1 = new TChannel(3, sizeof(int));
   dbg("ch is %p\n", ch1);
 
   // co1 consumes
   auto co1 = start([ch1]() {
     dbg("co1 begin\n");
-    
+
     while (true) {
       int data = 0;
+      // if there is nothing it will block us until someone pushes something
+      // or the channel is closed.
       if (!pull(ch1, data))
         break;
       dbg("co1 has pulled %d\n", data);
@@ -210,20 +199,21 @@ void demo_channels() {
   auto co2 = start([ch1]() {
     dbg("co2 begin\n");
 
-    // We can only fit 5 elems in the channel. When trying to push the 6th it will block us
-    for (int i = 0; i < 10; ++i) {
+    // We can only fit 3 elems in the channel. When trying to push the 4th it will block us
+    // yielding this co
+    for (int i = 0; i < 5; ++i) {
       int v = 100 + i;
       push(ch1, v);
       dbg("co2 has pushed %d\n", v);
     }
 
-    // pull from ch1 will return false once all elems have been pulled
+    // If I close, pulling from ch1 will return false once all elems have been pulled
     ch1->close();
 
     dbg("co2 ends\n");
     assert(now() == 1);
   });
-  
+
   //for( int i=0; i<3; ++i )
   //  push(ch1, i);
   //dbg("Closing ch1\n");
@@ -232,7 +222,8 @@ void demo_channels() {
 }
 
 // ----------------------------------------
-void demo_channels_send_from_main() {
+void test_channels_send_from_main() {
+  TSimpleDemo demo("test_channels");
 
   // send data between co's
   TChannel* ch1 = new TChannel(5, sizeof(int));
@@ -254,52 +245,30 @@ void demo_channels_send_from_main() {
   });
 
   int v = 100;
-  dbg("Main pushes 100 twice\n");
+  dbg("Main pushes 100 twice and then closes\n");
   push(ch1, v);
   push(ch1, v);
   ch1->close();
   runUntilAllCoroutinesEnd();
 }
 
-
-// ----------------------------------------
-//
-// ----------------------------------------
-void wait_with_timeout() {
-  resetTimer();
-  auto co1a = start([]() {
-    dbg("co1a begin. Will wait for 100 ticks\n");
-    wait(nullptr, 0, 100);
-    dbg("co1a end\n");
-  });
-  auto co2 = start([co1a]() {
-    dbg("co2 waits for co1a or a timeout of 5 ticks\n" );
-    TWatchedEvent evt(co1a);
-    int rc = wait(&evt, 1, 5);
-    dbg("co2 wait finishes. k = %d\n", rc);
-    assert(rc == wait_timedout);
-    assert(now() == 5);
-    dbg("co2 waiting again, now for 200 ticks\n");
-    rc = wait(&evt, 1, 200);
-    dbg("co2 wait finishes. k = %d\n", rc);
-    assert(rc == 0);
-    assert(now() == 100);
-  });
-  runUntilAllCoroutinesEnd();
-}
-
-// ----------------------------------------
-int main() {
-  //demo00();
-  //demo_enter_and_exit();
-  demo_async_series();
-  demo_channels();
-  //demo_channels_send_from_main();
-  demo05_wait2coroutines();
-  wait_with_timeout();
-  
+// -----------------------------------------------------------
+int main(int argc, char** argv) {
+  test_demo_yield();
+  test_wait_time();
+  test_wait_co();
+  test_wait_all();
+  //test_wait_keys();
+  test_wait_2_coroutines_with_timeout();
+  test_channels();
+  test_channels_send_from_main();
   return 0;
 }
+
+
+/*
+    
+
 
 
 */
