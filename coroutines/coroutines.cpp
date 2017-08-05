@@ -185,7 +185,10 @@ namespace Coroutines {
       co_new->boot_fn_arg = boot_fn_arg;
       co_new->resetIP();
 
-      co_new->resume();
+      // Can't start the new co from another co. Just register it
+      // and the main thread will take care of starting it when possible
+      if( !isHandle( current() ))
+        co_new->resume();
 
       return co_new->this_handle;
     }
@@ -439,7 +442,7 @@ namespace Coroutines {
 
       if (co.state == TCoro::WAITING_FOR_CONDITION) {
         if (co.must_wait())
-          continue;
+          return true;
         co.state = TCoro::RUNNING;
       }
 

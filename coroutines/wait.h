@@ -75,6 +75,9 @@ namespace Coroutines {
   // Will return the index of the event which wake up
   int wait(TWatchedEvent* watched_events, int nevents_to_watch, TTimeDelta timeout = no_timeout);
 
+  // Wait a user provided function.
+  void wait(TWaitConditionFn fn);
+
   // Wait for another coroutine to finish
   // wait while h is a coroutine handle
   void wait(THandle h);

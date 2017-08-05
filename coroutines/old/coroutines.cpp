@@ -42,27 +42,6 @@ namespace Coroutines {
     uint16_t             last_in_use = INVALID_ID;
 
     // ----------------------------------------------------------
-    TCoro* byHandle(THandle h) {
-      if (h.id >= coros.size())
-        return nullptr;
-      TCoro* c = &coros[h.id];
-      assert(c->this_handle.id == h.id);
-      if (h.age != c->this_handle.age)
-        return nullptr;
-      return c;
-    }
-
-    // ----------------------------------------------------------
-    void dump(const char* title) {
-      printf("Dump FirstFree: %d LastFree:%d FirstInUse:%d - LastInUse:%d %s\n", first_free, last_free, first_in_use, last_in_use, title);
-      int idx = 0;
-      for (auto& co : coros) {
-        printf("%04x : prev:%04x next:%04x state:%d\n", idx, co.prev_id, co.next_id, co.state);
-        ++idx;
-      }
-    }
-
-    // ----------------------------------------------------------
     TCoro* findFree() {
 
       for (auto& co : coros) {
@@ -170,101 +149,6 @@ namespace Coroutines {
       co_curr->switchTo(co_main);
     }
 
-  }
-
-  // --------------------------------------------
-  bool isHandle(THandle h) {
-    return internal::byHandle(h) != nullptr;
-  }
-
-  // --------------------------
-  THandle current() {
-    return internal::h_current;
-  }
-
-  // --------------------------
-  void yield() {
-    auto co_curr = internal::byHandle(current());
-    assert(co_curr);
-
-    auto co_main = internal::byHandle(internal::h_main);
-    assert(co_main);
-
-    // You can't yield with the main co, or we will not be able
-    // to activate other co's to unlock us
-    assert(co_curr != co_main);
-
-    // Return control to main co
-    co_curr->switchTo(co_main);
-  }
-
-  // --------------------------
-  void wait(TWaitConditionFn fn) {
-    // If the condition does not apply now, don't wait
-    if (!fn())
-      return;
-    auto co = internal::byHandle(current());
-    assert(co);
-    co->state = internal::TCoro::WAITING;
-    co->must_wait = fn;
-    yield();
-  }
-
-  // ----------------------------------------------------------
-  int executeActives() {
-    using namespace internal;
-
-    auto co_main = byHandle(h_main);
-    assert(co_main);
-
-    int nactives = 0;
-    for (auto& co : coros) {
-      if (co.isMain())
-        continue;
-      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED)
-        continue;
-
-      ++nactives;
-      if (co.state == TCoro::WAITING_FOR_EVENT)
-        continue;
-
-      h_current = co.this_handle;
-      co_main->switchTo(&co);
-      h_current = h_main;
-    }
-      /*
-
-    auto co_main = byHandle(h_main);
-    assert(co_main);
-
-    int nactives = 0;
-    int idx = first_in_use;
-    while (idx != INVALID_ID) {
-      auto& co = coros[idx];
-      idx = co.next_id;
-      assert(co.state != TCoro::FREE);
-      if (co.is_main)
-        continue;
-
-      nactives++;
-      if (co.state == TCoro::WAITING_FOR_EVENT)
-        continue;
-      if (co.state == TCoro::WAITING) {
-        if (co.must_wait())
-          continue;
-        co.state = TCoro::RUNNING;
-      }
-      assert(co.state == internal::TCoro::RUNNING);
-
-      // asumming we are in the main coroutine!
-      h_current = co.this_handle;
-      co_main->switchTo(&co);
-      h_current = THandle();
-    }
-    h_current = h_main;
-    */
-
-    return nactives;
   }
 
   // ----------------------------------------------------------
@@ -402,22 +286,3 @@ namespace Coroutines {
     return event_idx;
   }
 
-  // ---------------------------------------------------
-  void wakeUp(TWatchedEvent* we) {
-    assert(we);
-    auto co = internal::byHandle(we->owner);
-    if (co) {
-      co->event_waking_me_up = we;
-      co->state = internal::TCoro::RUNNING;
-    }
-  }
-
-  // ---------------------------------------------------
-  void switchTo(THandle h) {
-    auto co = internal::byHandle(h);
-    if (co) {
-      co->switchTo(co);
-    }
-  }
-
-}

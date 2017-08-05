@@ -1,6 +1,7 @@
 #include "coroutines/coroutines.h"
 #include <cstdarg>
 #include <cstdio>
+#include <Windows.h>
 
 using namespace Coroutines;
 
@@ -64,7 +65,6 @@ void basic_wait_time(const char* title, int nsecs) {
   dbg("%s boots. Will wait %d secs\n", title, nsecs);
   wait(nullptr, 0, nsecs);
   dbg("%s After waiting %d ticks we leave\n", title, nsecs);
-  dbg("%s leaves\n", title);
 }
 
 void test_wait_time() {
@@ -77,6 +77,7 @@ void test_wait_time() {
   assert(tm.elapsed() == 6);
 }
 
+// -----------------------------------------------------------
 void test_wait_co() {
   TScopedTime tm;
   {
@@ -90,12 +91,52 @@ void test_wait_co() {
   }
   assert(tm.elapsed() == 4);
 }
+  
+
+
+// -----------------------------------------------------------
+void test_wait_all() {
+  TScopedTime tm;
+  {
+    TSimpleDemo demo("test_wait_all");
+    auto co1 = start([]() {
+      auto coA = start([]() {basic_wait_time("A", 25); });
+      auto coB = start([]() {basic_wait_time("B", 10); });
+      auto coC = start([]() {basic_wait_time("C", 15); });
+
+      // Waits for all co end before continuing...
+      waitAll({ coA, coB, coC });
+      dbg("waitAll continues...\n");
+    });
+  }
+  assert(tm.elapsed() == 28);
+}
+
+// ---------------------------------------------------------
+// Wait while the key is not pressed 
+void waitKey(int c) {
+  wait( [c]() { return (::GetAsyncKeyState(c) & 0x8000) == 0; });
+}
+
+void test_wait_keys() {
+  TSimpleDemo demo("test_wait_keys");
+  auto coKeys = start([]() {
+    dbg("At coKeys. Press the key 'A'\n");
+    waitKey('A');
+    dbg("At coKeys. Now press the key 'B'\n");
+    waitKey('B');
+    dbg("At coKeys. well done\n");
+  });
+}
+
 
 // -----------------------------------------------------------
 int main(int argc, char** argv) {
   test_demo_yield();
   test_wait_time();
   test_wait_co();
+  test_wait_all();
+  test_wait_keys();
   return 0;
 }
 
@@ -103,85 +144,8 @@ int main(int argc, char** argv) {
 /*
 #include "../coroutines/channel.h"
     
-// Wait while the key is not pressed 
-void waitKey(int c) {
-  wait([c]() { return (::GetAsyncKeyState( c ) & 0x8000 ) == 0; });
-}
-
-// Wait for keys, time, other co's
-void demo00() {
-
-  auto co2 = start([co1]() {
-    dbg("co2 boots\n");
-
-    wait(co1);
-    dbg("co2 continues now that co1 is not a handle anymore\n");
-
-    int k = 0;
-    while (k < 10 ) {
-      dbg("At co2\n");
-      yield();
-      ++k;
-    }
-  });
-
-  auto co4 = start([]() {
-    dbg("At co4. Press the key 'A'\n");
-    waitKey('A');
-    dbg("At co4. Now press the key 'B'\n");
-    waitKey('B');
-    dbg("At co4. well done\n");
-  });
-
-  runUntilAllCoroutinesEnd();
-  dbg("No coroutines active\n");
-
-}
 
 // --------------------------------------------
-// Two simple empty co's
-void demo_enter_and_exit() {
-  auto co1 = start([]() {
-    dbg("At co1. Enter and exit\n");
-  });
-  auto co2 = start([]() {
-    dbg("At co2. Enter and exit\n");
-  });
-  runUntilAllCoroutinesEnd();
-}
-
-// --------------------------------------------
-void doFn1() {
-  dbg("At fn1\n");
-}
-void doFn2() {
-  dbg("At fn2 starts\n");
-
-  auto coA = start([]() {
-    dbg("At A begins\n");
-    wait(nullptr, 0, 25);
-    dbg("At A ends\n");
-  });
-  auto coB = start([]() {
-    dbg("At B begins\n");
-    wait(nullptr, 0, 10);
-    dbg("At B ends\n");
-  });
-  auto coC = start([]() {
-    dbg("At C begins\n");
-    wait(nullptr, 0, 15);
-    dbg("At C ends\n");
-  });
-  
-  // Waits for all co end before continuing...
-  waitAll({ coA, coB, coC });
-
-  dbg("At fn2 ends\n");
-}
-void doFn3() {
-  dbg("At fn3\n");
-}
-
 void doRange(int n_beg, int n_end) {
   while (n_beg < n_end) {
     dbg("At doRange( %d..%d )\n", n_beg, n_end);
