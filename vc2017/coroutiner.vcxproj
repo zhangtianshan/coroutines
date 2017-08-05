@@ -150,6 +150,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\coroutines\channel.cpp" />
     <ClCompile Include="..\coroutines\coroutines.cpp" />
     <ClCompile Include="..\coroutines\timeline.cpp" />
     <ClCompile Include="sample00.cpp" />
@@ -158,6 +159,7 @@
     <None Include="..\README" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\coroutines\channel.h" />
     <ClInclude Include="..\coroutines\coroutines.h" />
     <ClInclude Include="..\coroutines\fcontext\fcontext.h" />
     <ClInclude Include="..\coroutines\list.h" />

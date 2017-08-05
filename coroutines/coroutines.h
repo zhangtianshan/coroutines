@@ -50,6 +50,7 @@ namespace Coroutines {
   int     executeActives();
 
   // --------------------------------------------------
+  void    wakeUp(TWatchedEvent* we);
   typedef std::function<bool(void)> TWaitConditionFn;
 
 }
@@ -57,6 +58,7 @@ namespace Coroutines {
 #include "list.h"
 #include "timeline.h"
 #include "wait.h"
+#include "channel.h"
 
 
 #endif

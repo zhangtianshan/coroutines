@@ -11,12 +11,12 @@ namespace Coroutines {
 
   // ----------------------------------------
   class TChannel {
-    size_t bytes_per_elem;
-    size_t max_elems;
-    size_t nelems_stored;
-    size_t first_idx;
-    u8*    data;
-    bool   is_closed;
+    size_t bytes_per_elem = 0;
+    size_t max_elems      = 0;
+    size_t nelems_stored  = 0;
+    size_t first_idx      = 0;
+    u8*    data           = nullptr;
+    bool   is_closed      = false;
 
     u8* addrOfItem(size_t idx) {
       assert(data);
@@ -29,13 +29,10 @@ namespace Coroutines {
     TList  waiting_for_pull;
 
   public:
-    TChannel() : bytes_per_elem(0), max_elems(0), nelems_stored(0), first_idx(0), data(nullptr), is_closed(false) { }
+    TChannel() = default;
     TChannel(size_t new_max_elems, size_t new_bytes_per_elem) {
       bytes_per_elem = new_bytes_per_elem;
       max_elems = new_max_elems;
-      nelems_stored = 0;
-      first_idx = 0;
-      is_closed = false;
       data = new u8[bytes_per_elem * max_elems];
     }
     void push(const void* user_data, size_t user_data_size);
@@ -45,9 +42,14 @@ namespace Coroutines {
     bool full() const { return nelems_stored == max_elems; }
     void close();
     size_t bytesPerElem() const { return bytes_per_elem; }
+
+    // Without blocking
+    bool canPull() const { return !empty(); }
+    bool canPush() const { return !full(); }
   };
 
   // -----------------------------------------------------
+  // returns true if the object can be pulled
   template< typename TObj >
   bool pull(TChannel* ch, TObj& obj) {
     assert(ch);
@@ -63,6 +65,7 @@ namespace Coroutines {
     return true;
   }
 
+  // returns true if the object can be pushed
   template< typename TObj >
   bool push(TChannel* ch, const TObj& obj) {
     assert(ch);
@@ -76,7 +79,6 @@ namespace Coroutines {
     ch->push(&obj, sizeof(obj));
     return true;
   }
-
 
 }
 
