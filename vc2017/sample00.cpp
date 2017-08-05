@@ -129,6 +129,44 @@ void test_wait_keys() {
   });
 }
 
+// ---------------------------------------------------------
+// Wait for any of the two coroutines to finish or timeout
+void test_wait_2_coroutines_with_timeout() {
+  TSimpleDemo demo("test_wait_2_coroutines_with_timeout");
+
+  auto coA = start([]() {basic_wait_time("A", 13); });
+  auto coB = start([]() {basic_wait_time("B", 8); });
+  dbg("co to wait are %08x %08x (%p %p)\n", coA.asUnsigned(), coB.asUnsigned(), &coA, &coB);
+
+  auto co2 = start([coA, coB]() {
+    // Get a copy or the input values will be corrupted when co2 goes out of scope
+    THandle tcoA = coA;
+    THandle tcoB = coB;
+    int niter = 0;
+    while (true) {
+      dbg("co2 iter %d %08x %08x (%p %p)\n", niter, coA.asUnsigned(), coB.asUnsigned(), &coA, &coB);
+      ++niter;
+      int n = 0;
+      TWatchedEvent evts[2];
+      if (isHandle(tcoA))
+        evts[n++] = TWatchedEvent(tcoA);
+      if (isHandle(tcoB))
+        evts[n++] = TWatchedEvent(tcoB);
+      if (!n) {
+        dbg("Nothing else to wait\n");
+        break;
+      }
+      dbg("co2 goes to sleep for 5s waiting for coA and/or coB to end (%d)\n", n);
+      int k = wait(evts, n, 5);
+      if( k == wait_timedout)
+        dbg("co2 timedout\n");
+      else
+        dbg("co2 resumes for event %d\n", k);
+    }
+    dbg("co2 ends\n");
+  });
+  //runUntilAllCoroutinesEnd();
+}
 
 // -----------------------------------------------------------
 int main(int argc, char** argv) {
@@ -136,7 +174,8 @@ int main(int argc, char** argv) {
   test_wait_time();
   test_wait_co();
   test_wait_all();
-  test_wait_keys();
+  //test_wait_keys();
+  test_wait_2_coroutines_with_timeout();
   return 0;
 }
 
@@ -144,51 +183,6 @@ int main(int argc, char** argv) {
 /*
 #include "../coroutines/channel.h"
     
-
-// --------------------------------------------
-void doRange(int n_beg, int n_end) {
-  while (n_beg < n_end) {
-    dbg("At doRange( %d..%d )\n", n_beg, n_end);
-    n_beg++;
-    yield();
-  }
-}
-
-void doFn4(int nelems, int step) {
-  dbg("At fn4 begin\n");
-
-  std::vector< THandle > children;
-  int n0 = 0;
-  while (n0 < nelems) {
-    int n1 = std::min(n0 + step, nelems);
-    auto h = start([n0, n1]() { doRange(n0, n1); });
-    children.push_back(h);
-    n0 = n1;
-  }
-
-  waitAll(children.begin(), children.end());
-
-  dbg("At fn4 end\n");
-}
-
-// ----------------------------------------
-// async series + parallel
-void demo_async_series() {
-  resetTimer();
-
-  // Run some items in serie, then fn2 runs in parallel
-  auto co_series = start([]() {
-
-    doFn1();
-    doFn2();
-    doFn3();
-    doFn4(32, 10);
-
-  });
-
-  runUntilAllCoroutinesEnd();
-}
-
 // ----------------------------------------
 void demo_channels() {
   resetTimer();
@@ -267,46 +261,6 @@ void demo_channels_send_from_main() {
   runUntilAllCoroutinesEnd();
 }
 
-// ----------------------------------------
-// Wait for another coroutine to finish
-// ----------------------------------------
-void demo05_wait2coroutines() {
-  resetTimer();
-
-  auto co1a = start([]() {
-    dbg("co1a begin\n");
-    wait(nullptr, 0, 5);
-    dbg("co1a end\n");
-    assert(now() == 5);
-  });
-
-  auto co1b = start([]() {
-    dbg("co1b begins\n");
-    wait(nullptr, 0, 10);
-    dbg("co1b ends\n");
-    assert(now() == 10);
-  });
-
-  auto co2 = start([co1a, co1b]() {
-    dbg("co2 begins\n");
-    while (true) {
-      int n = 0;
-      TWatchedEvent evts[2];
-      if (isHandle(co1a))
-        evts[n++] = TWatchedEvent(co1a);
-      if (isHandle(co1b))
-        evts[n++] = TWatchedEvent(co1b);
-      if (!n)
-        break;
-      dbg("co2 goes to sleep waiting for co1a or co1b to end (%d)\n", n);
-      wait(evts, n);
-    }
-    dbg("co2 ends\n");
-    assert(now() == 10);
-  });
-
-  runUntilAllCoroutinesEnd();
-}
 
 // ----------------------------------------
 //

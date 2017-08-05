@@ -20,6 +20,7 @@ namespace Coroutines {
     uint16_t id = 0;
     uint16_t age = 0;
     bool operator==(const THandle& other) const { return id == other.id && age == other.age; }
+    uint32_t asUnsigned() const { return (age << 16 ) | id; }
   };
 
   typedef void(*TBootFn)(void*);
