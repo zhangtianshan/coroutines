@@ -151,6 +151,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\coroutines\coroutines.cpp" />
+    <ClCompile Include="..\coroutines\timeline.cpp" />
     <ClCompile Include="sample00.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -159,6 +160,9 @@
   <ItemGroup>
     <ClInclude Include="..\coroutines\coroutines.h" />
     <ClInclude Include="..\coroutines\fcontext\fcontext.h" />
+    <ClInclude Include="..\coroutines\list.h" />
+    <ClInclude Include="..\coroutines\timeline.h" />
+    <ClInclude Include="..\coroutines\wait.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

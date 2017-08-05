@@ -5,10 +5,6 @@
 using namespace Coroutines;
 
 // --------------------------------------------------
-int current_time = 0;
-int now() { return current_time; }
-void updateCurrentTime(int delta) { current_time += delta; }
-
 void dbg(const char *fmt, ...) {
   char buf[1024];
   va_list ap;
@@ -29,156 +25,91 @@ void runUntilAllCoroutinesEnd() {
   dbg("all done\n");
 }
 
-void basicTask(const char* title) {
+struct TSimpleDemo {
+  const char* title;
+  TSimpleDemo(const char* new_title) : title( new_title ) {
+    dbg("-------------------------------\n%s starts\n", title);
+  }
+  ~TSimpleDemo() {
+    dbg("%s waiting co's to finish\n", title);
+    runUntilAllCoroutinesEnd();
+    dbg("%s ends\n", title);
+  }
+};
+
+// -----------------------------------------------------------
+void demo_yield(const char* title) {
   dbg("%s boots\n", title);
   yield();
   dbg("%s after yield\n", title);
   yield();
   dbg("%s after yield 2\n", title);
   yield();
-  //wait(nullptr, 0, 30);
-  //dbg("After waiting 30 ticks we leave\n");
   dbg("%s leaves\n", title);
 }
 
-void test_basic() {
-  dbg("Main boots\n");
-  auto f1 = []() { basicTask("co1"); };
-  auto f2 = []() { basicTask("co2"); };
-
+void test_demo_yield() {
+  TSimpleDemo demo("test_demo_yield");
+  auto f1 = []() { demo_yield("co1"); };
+  auto f2 = []() { demo_yield("co2"); };
   auto co1 = start(f1);
   auto co2 = start(f2);
-
-  runUntilAllCoroutinesEnd();
+  auto co3 = start([]() {
+    dbg("At co3. Enter and exit\n");
+  });
 }
 
-
-// ---------------------------------------------
-#include "coroutines/fcontext/fcontext.h"
-bool terminated = false;
-fcontext_transfer_t return_ip;
-fcontext_transfer_t ip;
-
-void api_dbg(const char *fmt, ...) {
-  char buf[1024];
-  va_list ap;
-  va_start(ap, fmt);
-  int n = _vsnprintf_s(buf, sizeof(buf) - 1, fmt, ap);
-  if (n < 0)
-    buf[1023] = 0x00;
-  va_end(ap);
-  printf("%04d : ip:%p rip:%p %s", (int)now(), ip.ctx, return_ip.ctx, buf);
+// -----------------------------------------------------------
+void basic_wait_time(const char* title, int nsecs) {
+  dbg("%s boots. Will wait %d secs\n", title, nsecs);
+  wait(nullptr, 0, nsecs);
+  dbg("%s After waiting %d ticks we leave\n", title, nsecs);
+  dbg("%s leaves\n", title);
 }
 
-void api_yield() {
-  return_ip = jump_fcontext(return_ip.ctx, return_ip.data);
-}
-
-void apiDoSomething() {
-  const char* title = "api";
-  api_dbg("%s boots\n", title);
-  api_yield();
-  api_dbg("%s after yield\n", title);
-  api_yield();
-  api_dbg("%s after yield 2\n", title);
-  api_yield();
-  api_dbg("%s leaves\n", title);
-}
-
-void apiFn(fcontext_transfer_t t) {
-  return_ip = t;
-  apiDoSomething();
-  terminated = true;
-  jump_fcontext(return_ip.ctx, return_ip.data);
-}
-
-void apiStep() {
-  ip = jump_fcontext(ip.ctx, ip.data);
-}
-
-void api_start() {
-  fcontext_stack_t stack = ::create_fcontext_stack();
-  ip.ctx = make_fcontext(stack.sptr, stack.ssize, &apiFn);
-  ip.data = nullptr;
-  api_dbg("Boot\n");
-  apiStep();
-}
-
-void test_api() {
-  api_start();
-  while (!terminated) {
-    api_dbg("MAIN\n");
-    apiStep();
+void test_wait_time() {
+  TScopedTime tm;
+  {
+    TSimpleDemo demo("test_wait_time");
+    auto co1 = start([]() { basic_wait_time("co1", 3); });
+    auto co2 = start([]() { basic_wait_time("co2", 5); });
   }
+  assert(tm.elapsed() == 6);
 }
 
+void test_wait_co() {
+  TScopedTime tm;
+  {
+    TSimpleDemo demo("test_wait_co");
+    auto co1 = start([]() { basic_wait_time("co1", 3); });
+    start([co1]() {
+      dbg("Co2: Waiting for co1\n");
+      wait(co1);
+      dbg("Co2: co1 is ready. continuing\n");
+    });
+  }
+  assert(tm.elapsed() == 4);
+}
+
+// -----------------------------------------------------------
 int main(int argc, char** argv) {
-  //test_api();
-  test_basic();
+  test_demo_yield();
+  test_wait_time();
+  test_wait_co();
   return 0;
 }
 
 
 /*
-#include "../coroutines/coroutines.h"
 #include "../coroutines/channel.h"
     
-// -------------------------------------------------------
-// -------------------------------------------------------
-// -------------------------------------------------------
-// -------------------------------------------------------
-using namespace Coroutines;
-
-// Wait for another coroutine to finish
-// wait while h is a coroutine handle
-void wait(THandle h) {
-  TWatchedEvent we(h);
-  wait(&we, 1);
-}
-
-template< typename iterator >
-void waitAll(iterator beg, iterator end) {
-  while (beg != end) {
-    wait(*beg);
-    ++beg;
-  }
-}
-
-// Wait until all coroutines have finished
-void waitAll( std::initializer_list<THandle> handles ) {
-  waitAll(handles.begin(), handles.end());
-}
-
 // Wait while the key is not pressed 
 void waitKey(int c) {
   wait([c]() { return (::GetAsyncKeyState( c ) & 0x8000 ) == 0; });
 }
 
-void runUntilAllCoroutinesEnd() {
-  while (true) {
-    updateCurrentTime(1);
-    if (!executeActives())
-      break;
-  }
-  dbg("all done\n");
-}
-
-
-// --------------------------------------------------
 // Wait for keys, time, other co's
 void demo00() {
-
-  auto co1 = start([]() {
-    dbg("co1 boots\n");
-    yield();
-    dbg("At co1\n");
-    wait(nullptr, 0, 30);
-    dbg("After waiting 30 ticks we leave\n");
-  });
-
-  auto co3 = start([]() {
-    dbg("At co3. Enter and exit\n");
-  });
 
   auto co2 = start([co1]() {
     dbg("co2 boots\n");
@@ -441,7 +372,6 @@ void wait_with_timeout() {
 
 // ----------------------------------------
 int main() {
-  Coroutines::initialize();
   //demo00();
   //demo_enter_and_exit();
   demo_async_series();

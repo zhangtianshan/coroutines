@@ -11,6 +11,11 @@ namespace Coroutines {
   typedef uint64_t      u64;
   typedef uint8_t       u8;
 
+  class  TChannel;
+  struct THandle;
+  struct TWatchedEvent;
+
+  // --------------------------------------------------
   struct THandle {
     uint16_t id = 0;
     uint16_t age = 0;
@@ -23,7 +28,7 @@ namespace Coroutines {
   namespace internal {
     THandle start(TBootFn boot_fn, void* fn_addr);
 
-    // This will translate any signature to a common calling interface
+    // This will translate any signature to a common calling signature
     template< typename TFn >
     static void userBoot(void* user_fn_addr) {
       TFn* fn = static_cast<TFn*> (user_fn_addr);
@@ -44,20 +49,13 @@ namespace Coroutines {
   int     executeActives();
 
   // --------------------------------------------------
-
-
-  // --------------------------------------------------
-
-
-  // --------------------------------------------------
-//  typedef std::function<bool(void)> TWaitConditionFn;
-
-
-
-
+  typedef std::function<bool(void)> TWaitConditionFn;
 
 }
 
+#include "list.h"
+#include "timeline.h"
+#include "wait.h"
 
 
 #endif

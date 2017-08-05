@@ -6,6 +6,8 @@
 
 namespace Coroutines {
 
+  void wakeUp(TWatchedEvent* we);
+
   static const uint16_t INVALID_ID = 0xffff;
 
   namespace internal {
@@ -19,7 +21,7 @@ namespace Coroutines {
       enum eState {
         UNINITIALIZED
       , RUNNING
-      , WAITING
+      , WAITING_FOR_CONDITION
       , WAITING_FOR_EVENT
       , FREE
       };
@@ -29,7 +31,12 @@ namespace Coroutines {
       //uint16_t                  prev_id = INVALID_ID;            // Only used when active
       //uint16_t                  next_id = 0;
 
-      // User 
+      // Wait
+      TWaitConditionFn          must_wait;
+      TList                     waiting_for_me;
+      TWatchedEvent*            event_waking_me_up = nullptr;      // Which event took us from the WAITING_FOR_EVENT
+
+      // User entry point 
       TBootFn                   boot_fn = nullptr;
       void*                     boot_fn_arg = nullptr;
 
@@ -53,6 +60,7 @@ namespace Coroutines {
         assert(co);
         co->caller_ctx = t;
         co->runUserFn();
+        co->wakeOthersWaitingForMe();
         co->returnToCaller();
       }
 
@@ -79,6 +87,16 @@ namespace Coroutines {
       void returnToCaller() {
         h_current = THandle();
         caller_ctx = jump_fcontext(caller_ctx.ctx, caller_ctx.data);
+      }
+
+      void wakeOthersWaitingForMe() {
+        // Wake up those coroutines that were waiting for me to finish
+        while (true) {
+          auto we = waiting_for_me.detachFirst< TWatchedEvent >();
+          if (!we)
+            break;
+          wakeUp(we);
+        }
       }
 
     };
@@ -172,6 +190,17 @@ namespace Coroutines {
       return co_new->this_handle;
     }
 
+    // ----------------------------------------------------------
+    void dump(const char* title) {
+      //printf("Dump FirstFree: %d LastFree:%d FirstInUse:%d - LastInUse:%d %s\n", first_free, last_free, first_in_use, last_in_use, title);
+      printf("Dump %s\n", title);
+      int idx = 0;
+      for (auto& co : coros) {
+        printf("%04x : state:%d\n", idx, co.state);
+        ++idx;
+      }
+    }
+
     // --------------------------------------------
     struct TScheduler {
       int nactives = 0;
@@ -194,6 +223,197 @@ namespace Coroutines {
   }
 
   // --------------------------------------------
+  void yield() {
+    assert(isHandle( current() ));
+    auto co = internal::byHandle(current());
+    assert(co);
+    co->returnToCaller();
+  }
+
+
+  // -------------------------------
+  // WAIT --------------------------
+  // -------------------------------
+  
+  // --------------------------
+  void wait(TWaitConditionFn fn) {
+    // If the condition does not apply now, don't wait
+    if (!fn())
+      return;
+    // We must be a valid co
+    auto co = internal::byHandle(current());
+    assert(co);
+    co->state = internal::TCoro::WAITING_FOR_CONDITION;
+    co->must_wait = fn;
+    yield();
+  }
+
+  // Wait for another coroutine to finish
+  // wait while h is a coroutine handle
+  void wait(THandle h) {
+    TWatchedEvent we(h);
+    wait(&we, 1);
+  }
+
+  // Wait until all coroutines have finished
+  void waitAll(std::initializer_list<THandle> handles) {
+    waitAll(handles.begin(), handles.end());
+  }
+
+  // --------------------------------------------------------------
+  int wait(TWatchedEvent* watched_events, int nwatched_events, TTimeDelta timeout) {
+    assert(isHandle(current()));
+
+    int n = nwatched_events;
+    auto we = watched_events;
+
+    // Check if any of the wait conditions are false, so there is no need to enter in the wait
+    // for event mode
+    int idx = 0;
+    while (idx < n) {
+
+      switch (we->event_type) {
+
+        /*
+        case EVT_CHANNEL_CAN_PULL:
+        if (!we->channel.channel->empty() || we->channel.channel->closed())
+        return idx;
+        break;
+
+        case EVT_CHANNEL_CAN_PUSH:
+        if (!we->channel.channel->full() && !we->channel.channel->closed())
+        return idx;
+        break;
+        */
+
+      case EVT_COROUTINE_ENDS: {
+        if (!isHandle(we->coroutine.handle))
+          return idx;
+        break; }
+
+      default:
+        break;
+      }
+
+      ++idx;
+    }
+
+    // Attach to event watchers
+    while (n--) {
+      /*
+      if (we->event_type == EVT_CHANNEL_CAN_PULL)
+      we->channel.channel->waiting_for_pull.append(we);
+      else
+      if (we->event_type == EVT_CHANNEL_CAN_PUSH)
+      we->channel.channel->waiting_for_push.append(we);
+      else
+      */
+      if (we->event_type == EVT_COROUTINE_ENDS) {
+        // Check if the handle that we want to wait, still exists
+        auto co_to_wait = internal::byHandle(we->coroutine.handle);
+        if (co_to_wait)
+          co_to_wait->waiting_for_me.append(we);
+      }
+      else {
+        // Unsupported event type
+        assert(false);
+      }
+      ++we;
+    }
+
+    // Do we have to install a timeout event watch?
+    TWatchedEvent time_we;
+    if (timeout != no_timeout) {
+      assert(timeout >= 0);
+      time_we = TWatchedEvent(timeout);
+      registerTimeoutEvent(&time_we);
+    }
+
+    // Put ourselves to sleep
+    auto co = internal::byHandle(current());
+    assert(co);
+    co->state = internal::TCoro::WAITING_FOR_EVENT;
+    co->event_waking_me_up = nullptr;
+    
+    yield();
+
+    // After we wakeup, we should be ready to go
+
+    // There should be a reason to exit the waiting_for_event
+    assert(co->event_waking_me_up != nullptr);
+    int event_idx = 0;
+
+    // If we had programmed a timeout, remove it
+    if (timeout != no_timeout) {
+      unregisterTimeoutEvent(&time_we);
+      event_idx = wait_timedout;
+    }
+
+    // Detach from event watchers
+    n = 0; ;
+    we = watched_events;
+    while (n <  nwatched_events) {
+      /*
+      if (we->event_type == EVT_CHANNEL_CAN_PULL)
+        we->channel.channel->waiting_for_pull.detach(we);
+      else if (we->event_type == EVT_CHANNEL_CAN_PUSH)
+        we->channel.channel->waiting_for_push.detach(we);
+      else 
+      */
+      if (we->event_type == EVT_COROUTINE_ENDS) {
+        // The coroutine we were waiting for is already gone, but 
+        // we might be waiting for several co's to finish
+        auto co_to_wait = internal::byHandle(we->coroutine.handle);
+        if (co_to_wait)
+          co_to_wait->waiting_for_me.detach(we);
+      }
+      else {
+        // Unsupported event type
+        assert(false);
+      }
+      if (co->event_waking_me_up == we)
+        event_idx = n;
+      ++we;
+      ++n;
+    }
+
+    return event_idx;
+  }
+
+  // ---------------------------------------------------
+  // Try to wake up all the coroutines which were waiting for the event
+  void wakeUp(TWatchedEvent* we) {
+    assert(we);
+    auto co = internal::byHandle(we->owner);
+    if (co) {
+      co->event_waking_me_up = we;
+      co->state = internal::TCoro::RUNNING;
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // ----------------------------------------------------------
+  int executeActives() {
+    return internal::scheduler.runActives();
+  }
+
+  // --------------------------------------------
   int internal::TScheduler::runActives() {
     nactives = 0;
     next_idx = 0;
@@ -207,28 +427,28 @@ namespace Coroutines {
   bool internal::TScheduler::runNextReady() {
     // Find one ready
     while (next_idx < coros.size()) {
+
       auto& co = coros[next_idx];
       ++next_idx;
-      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED) {
+
+      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED)
         continue;
+
+      if (co.state == TCoro::WAITING_FOR_EVENT)
+        return true;
+
+      if (co.state == TCoro::WAITING_FOR_CONDITION) {
+        if (co.must_wait())
+          continue;
+        co.state = TCoro::RUNNING;
       }
+
+      assert(co.state == internal::TCoro::RUNNING);
       co.resume();
+
       return true;
     }
     return false;
-  }
-
-  // --------------------------------------------
-  void yield() {
-    assert(isHandle( current() ));
-    auto co = internal::byHandle(current());
-    assert(co);
-    co->returnToCaller();
-  }
-
-  // ----------------------------------------------------------
-  int executeActives() {
-    return internal::scheduler.runActives();
   }
 
 }

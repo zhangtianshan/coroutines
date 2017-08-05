@@ -5,6 +5,9 @@
     <ClCompile Include="..\coroutines\coroutines.cpp">
       <Filter>coroutines</Filter>
     </ClCompile>
+    <ClCompile Include="..\coroutines\timeline.cpp">
+      <Filter>coroutines</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="coroutines">
@@ -23,6 +26,15 @@
     </ClInclude>
     <ClInclude Include="..\coroutines\fcontext\fcontext.h">
       <Filter>coroutines\fcontext</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\wait.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\list.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\timeline.h">
+      <Filter>coroutines</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
