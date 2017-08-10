@@ -27,12 +27,14 @@ while(1)
     print "connection from $client_address:$client_port\n";
     my $data = "";
     $data = "hello";
+    print "sending $data\n";
     $client_socket->send($data);
  
     # read up to 1024 characters from the connected client
+    print "Reading from client...\n";
     $data = "";
     $client_socket->recv($data, 1024);
-    print "received data: $data\n";
+    print "received data: '$data'\n";
  
     # write response data to the connected client
     $data = "ok";

@@ -78,5 +78,8 @@
     <ClInclude Include="..\coroutines\net\tcp_socket.h">
       <Filter>coroutines\net</Filter>
     </ClInclude>
+    <ClInclude Include="..\coroutines\io_events.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

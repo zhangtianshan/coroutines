@@ -20,125 +20,10 @@ void dbg(const char *fmt, ...) {
   printf("%04d:%02d.%02d %s", (int)now(), current().id, current().age, buf);
 }
 
-#include <vector>
-struct TIOEvents {
-  typedef int TDescriptor;
-
-  struct TEntry {
-    TDescriptor fd;
-    int         mask = 0;
-    THandle     h_coroutine;
-  };
-
-  typedef std::vector< TEntry > VDescriptors;
-  TDescriptor  max_fd = 0;
-  VDescriptors entries;
-
-  fd_set rfds, wfds;
-
-  TEntry* find(int fd) {
-    for (auto& e : entries) {
-      if (e.fd == fd)
-        return &e;
-    }
-    TEntry new_e;
-    new_e.fd = fd;
-    new_e.h_coroutine = current();
-    entries.push_back(new_e);
-    return &entries.back();
-  }
-
-public:
-
-  TIOEvents() {
-    FD_ZERO(&rfds);
-    FD_ZERO(&wfds);
-  }
-
-  enum eMode {
-    TO_READ = 1,
-    TO_WRITE = 2,
-    TO_READ_AND_WRITE = 3
-  };
-
-  void add(int fd, eMode mode) {
-    auto e = find(fd);
-    assert(e && e->fd == fd);
-    if (mode == TO_READ) {
-      e->mask |= TO_READ;
-      FD_SET(fd, &rfds);
-    }
-    else {
-      e->mask |= TO_WRITE;
-      FD_SET(fd, &wfds);
-    }
-
-    if (fd > max_fd)
-      max_fd = fd;
-  }
-
-  void del(int fd, eMode mode) {
-    auto e = find(fd);
-    if (!e || e->mask == 0)
-      return;
-    e->mask &= (~mode);
-
-    // Are we removing the largest fd we have?
-    if (e->mask == 0 && e->fd == max_fd) {
-      // Update max_fd when we remove the largest fd defined
-      max_fd = 0;
-      for (auto& e : entries) {
-        if (e.fd > max_fd)
-          max_fd = e.fd;
-      }
-    }
-  }
-
-  int update() {
-
-    // Amount of time to wait
-    timeval tm;
-    tm.tv_sec = 0;
-    tm.tv_usec = 0;
-
-    fd_set fds_to_read, fds_to_write;
-
-    memcpy(&fds_to_read,  &rfds, sizeof(fd_set));
-    memcpy(&fds_to_write, &wfds, sizeof(fd_set));
-
-    // Do a real wait
-    int num_events = 0;
-    int retval = ::select(max_fd + 1, &fds_to_read, &fds_to_write, nullptr, &tm);
-    if (retval > 0) {
-
-      for (auto& e : entries) {
-
-        if (!e.mask)
-          continue;
-
-        // we were waiting a read op, and we can read now...
-        if ((e.mask & TO_READ) && FD_ISSET(e.fd, &fds_to_read)) {
-          notifyIOEvent(e.h_coroutine);
-        }
-
-        if ((e.mask & TO_WRITE) && FD_ISSET(e.fd, &fds_to_write)) {
-          notifyIOEvent(e.h_coroutine);
-        }
-
-      }
-    }
-    return num_events;
-  }
-
-};
-TIOEvents io_events;
-
-
 
 void runUntilAllCoroutinesEnd() {
   while (true) {
     updateCurrentTime(1);
-    io_events.update();
     if (!executeActives())
       break;
   }
@@ -380,30 +265,22 @@ struct TBuffer : public std::vector< uint8_t > {
 };
 
 // ---------------------------------------------------------------
-/*
-typedef size_t IOHandle;
-IOHandle open(const char* filename, const char* mode);
-size_t   read(IOHandle handle, void* where, size_t nbytes);
-void     close(IOHandle handle);
-*/
-
 #include "coroutines/net/net_platform.h"
 #include <io.h>
 #include <sys/types.h> 
 #include <fcntl.h>
 
-typedef SOCKET           SOCKET_ID;
 typedef sockaddr_in      TSockAddress;
 
 class IOHandle {
-  int       fd = -1;
-  bool      isValid() const { return fd > 0; }
-  bool      setNonBlocking();
+  SOCKET_ID  fd = ~(SOCKET_ID(0));
+  bool       isValid() const { return fd > 0; }
+  bool       setNonBlocking();
 public:
-  bool      connect(const TNetAddress &remote_server, int timeout_sec);
-  int       recv(void* dest_buffer, size_t bytes_to_read);
-  bool      send(const void* src_buffer, size_t bytes_to_send);
-  void      close();
+  bool       connect(const TNetAddress &remote_server, int timeout_sec);
+  int        recv(void* dest_buffer, size_t bytes_to_read);
+  bool       send(const void* src_buffer, size_t bytes_to_send);
+  void       close();
 };
 
 bool IOHandle::setNonBlocking() {
@@ -423,10 +300,10 @@ bool IOHandle::setNonBlocking() {
 
 bool IOHandle::connect(const TNetAddress &remote_server, int timeout_sec) {
 
-  int new_fd = socket(AF_INET, SOCK_STREAM, 0);
+  auto new_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (new_fd < 0)
     return false;
-  fd = (int)new_fd;
+  fd = new_fd;
 
   setNonBlocking();
   
@@ -442,7 +319,7 @@ bool IOHandle::connect(const TNetAddress &remote_server, int timeout_sec) {
 
 void IOHandle::close() {
   if (isValid()) {
-    ::_close(fd);
+    ::closesocket(fd);
     fd = -1;
   }
 }
@@ -451,9 +328,11 @@ int IOHandle::recv(void* dest_buffer, size_t bytes_to_read) {
   while (isValid()) {
     auto bytes_read = ::recv(fd, (char*)dest_buffer, bytes_to_read, 0);
     if (bytes_read == -1) {
-      if (errno == EAGAIN) {
-        io_events.add(fd, TIOEvents::TO_READ);
-        yield();
+      int err = WSAGetLastError();
+      if (err == WSAEWOULDBLOCK) {
+        dbg("Recv failed err = %d (vs %d). Going to sleep.\n", err, WSAEWOULDBLOCK);
+        TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_READ);
+        wait(&we, 1);
       }
       else
         break;
@@ -470,9 +349,9 @@ bool IOHandle::send(const void* src_buffer, size_t bytes_to_send) {
   while (isValid()) {
     auto bytes_sent = ::send(fd, ((const char*) src_buffer) + total_bytes_sent, bytes_to_send - total_bytes_sent, 0 );
     if (bytes_sent == -1) {
-      if (errno == EAGAIN) {
-        io_events.add(fd, TIOEvents::TO_WRITE);
-        yield();
+      if (errno == WSAEWOULDBLOCK) {
+        TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_WRITE);
+        wait(&we, 1);
       }
       else
         break;
@@ -496,7 +375,6 @@ void test_io() {
 
   TSimpleDemo demo("test_io");
   auto co1 = start([&]() {
-    //const char* filename = "large.bin";
 
     TNetAddress addr;
     addr.fromStr("127.0.0.1", 8080);
@@ -516,14 +394,17 @@ void test_io() {
     
     TBuffer b2(32);
     int bytes_read = s.recv(b2.data(), b2.capacity());
-    if( !bytes_read )
+    if (bytes_read < 0) {
+      dbg("Failed to read\n");
       return false;
+    }
+    dbg("Read %d bytes\n", bytes_read);
     b2.resize(bytes_read);
 
     if (!s.send(request, strlen(request)))
       return false;
 
-    bool header_complete = false;
+    bool header_complete = true;
     std::vector< std::string > header_lines;
     TBuffer b(32);
     int     unprocessed_bytes = 0;
@@ -565,27 +446,6 @@ void test_io() {
     //close(f);
 
     //auto buffer = file::read("input.bin");
-
-
-
-/*
-    int port = 80;
-
-    int fd = anetTcpNonBlockConnect(neterr, "192.168.1.7", port);
-    if (fd == ANET_ERR)
-      return false;
-    anetNonBlock(nullptr, fd);*/
-
-
-    //IOHandle f;
-    //if (!f.open("input.bin", "rb"))
-    //  return false;
-
-    //char buf[256];
-    //int bytes_read = f.read(buf, sizeof(buf));
-
-    //f.close();
-
 
     /*
     int si = s_open("input.bin", "rb");

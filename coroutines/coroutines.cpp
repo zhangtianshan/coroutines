@@ -1,4 +1,5 @@
 #include "coroutines.h"
+#include "io_events.h"
 #include "fcontext/fcontext.h"
 #include <vector>
 
@@ -99,6 +100,7 @@ namespace Coroutines {
 
     };
 
+    TIOEvents            io_events;
     std::vector< TCoro > coros;
     //uint16_t             first_free = 0;
     //uint16_t             last_free = 0;
@@ -209,8 +211,7 @@ namespace Coroutines {
       int runActives();
       bool runNextReady();
     };
-    TScheduler scheduler;
-
+    TScheduler           scheduler;
   }
 
   // --------------------------
@@ -326,6 +327,12 @@ namespace Coroutines {
         if (co_to_wait)
           co_to_wait->waiting_for_me.append(we);
       }
+      else if (we->event_type == EVT_SOCKET_IO_CAN_READ) {
+        internal::io_events.add(we);
+      }
+      else if (we->event_type == EVT_SOCKET_IO_CAN_WRITE) {
+        internal::io_events.add(we);
+      }
       else {
         // Unsupported event type
         assert(false);
@@ -377,6 +384,12 @@ namespace Coroutines {
         if (co_to_wait)
           co_to_wait->waiting_for_me.detach(we);
       }
+      else if (we->event_type == EVT_SOCKET_IO_CAN_READ) {
+        internal::io_events.del(we);
+      }
+      else if (we->event_type == EVT_SOCKET_IO_CAN_WRITE) {
+        internal::io_events.del(we);
+      }
       else {
         // Unsupported event type
         assert(false);
@@ -401,9 +414,105 @@ namespace Coroutines {
     }
   }
 
+  // ---------------------------------------------------
+  void internal::TIOEvents::add(TWatchedEvent* we) {
 
+    assert(we);
+    assert(we->event_type == EVT_SOCKET_IO_CAN_READ || we->event_type == EVT_SOCKET_IO_CAN_WRITE);
 
+    auto fd = we->io.fd;
+    auto mode = we->event_type == EVT_SOCKET_IO_CAN_READ ? TO_READ : TO_WRITE;
 
+    auto e = find(fd);
+
+    assert(e && e->fd == fd);
+    if (mode == TO_READ) {
+      e->mask |= TO_READ;
+      e->waiting_to_read.append(we);
+      FD_SET(fd, &rfds);
+    }
+    else {
+      e->mask |= TO_WRITE;
+      e->waiting_to_write.append(we);
+      FD_SET(fd, &wfds);
+    }
+
+    if (fd > max_fd)
+      max_fd = fd;
+  }
+
+  void internal::TIOEvents::del(TWatchedEvent* we) {
+
+    assert(we);
+    assert(we->event_type == EVT_SOCKET_IO_CAN_READ || we->event_type == EVT_SOCKET_IO_CAN_WRITE);
+
+    auto fd = we->io.fd;
+    auto mode = we->event_type == EVT_SOCKET_IO_CAN_READ ? TO_READ : TO_WRITE;
+
+    auto e = find(fd);
+
+    if (!e || e->mask == 0)
+      return;
+    e->mask &= (~mode);
+
+    assert(e && e->fd == fd);
+
+    // Are we removing the largest fd we have?
+    if (e->mask == 0 && e->fd == max_fd) {
+      // Update max_fd when we remove the largest fd defined
+      max_fd = 0;
+      for (auto& e : entries) {
+        if (e.fd > max_fd)
+          max_fd = e.fd;
+      }
+    }
+  }
+
+  int internal::TIOEvents::update() {
+
+    // Amount of time to wait
+    timeval tm;
+    tm.tv_sec = 0;
+    tm.tv_usec = 0;
+
+    fd_set fds_to_read, fds_to_write;
+
+    memcpy(&fds_to_read, &rfds, sizeof(fd_set));
+    memcpy(&fds_to_write, &wfds, sizeof(fd_set));
+
+    // Do a real wait
+    int num_events = 0;
+    int retval = ::select(max_fd + 1, &fds_to_read, &fds_to_write, nullptr, &tm);
+    if (retval > 0) {
+
+      for (auto& e : entries) {
+
+        if (!e.mask)
+          continue;
+
+        // we were waiting a read op, and we can read now...
+        if ((e.mask & TO_READ) && FD_ISSET(e.fd, &fds_to_read)) {
+          auto we = e.waiting_to_read.detachFirst< TWatchedEvent >();
+          if (we) {
+            assert(we->io.fd == e.fd);
+            assert(we->event_type == EVT_SOCKET_IO_CAN_READ);
+            wakeUp(we);
+          }
+        }
+
+        if ((e.mask & TO_WRITE) && FD_ISSET(e.fd, &fds_to_write)) {
+          auto we = e.waiting_to_write.detachFirst< TWatchedEvent >();
+          if (we) {
+            assert(we->io.fd == e.fd);
+            assert(we->event_type == EVT_SOCKET_IO_CAN_WRITE);
+            wakeUp(we);
+          }
+        }
+
+      }
+    }
+    return num_events;
+  }
 
 
 
@@ -420,6 +529,9 @@ namespace Coroutines {
 
   // ----------------------------------------------------------
   int executeActives() {
+    
+    internal::io_events.update();
+
     return internal::scheduler.runActives();
   }
 

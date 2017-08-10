@@ -9,6 +9,8 @@ namespace Coroutines {
   , EVT_TIMEOUT
   , EVT_CHANNEL_CAN_PUSH
   , EVT_CHANNEL_CAN_PULL
+  , EVT_SOCKET_IO_CAN_READ
+  , EVT_SOCKET_IO_CAN_WRITE
   , EVT_INVALID
   , EVT_TYPES_COUNT
   };
@@ -34,6 +36,10 @@ namespace Coroutines {
       struct {
         THandle    handle;
       } coroutine;
+
+      struct {
+        SOCKET_ID  fd;        // File descriptor
+      } io;
 
     };
 
@@ -63,6 +69,12 @@ namespace Coroutines {
       event_type = EVT_TIMEOUT;
       time.time_programmed = now();
       time.time_to_trigger = now() + timeout;
+      owner = current();
+    }
+
+    TWatchedEvent(SOCKET_ID fd, eEventType evt) {
+      event_type = evt;
+      io.fd = fd;
       owner = current();
     }
 

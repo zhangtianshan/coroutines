@@ -6,15 +6,13 @@
 namespace Coroutines {
 
   struct TListItem {
-    TListItem* prev;
-    TListItem* next;
-    TListItem( ) : prev( nullptr ), next( nullptr ) {}
+    TListItem* prev = nullptr;
+    TListItem* next = nullptr;
   };
 
   struct TList {
-    TListItem* first;
-    TListItem* last;
-    TList() : first(nullptr), last(nullptr) { }
+    TListItem* first = nullptr;
+    TListItem* last = nullptr;
     bool empty() const { return first == nullptr; }
     void append(TListItem* item) {
       assert(item);

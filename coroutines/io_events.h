@@ -1,0 +1,73 @@
+#ifndef INC_COROUTINES_IO_EVENTS_H_
+#define INC_COROUTINES_IO_EVENTS_H_
+
+#include <vector>
+#include <cassert>
+
+#ifdef _WIN32
+
+#define WINDOWS_LEAN_AND_MEAN
+#include <winsock2.h>             // fd_set Familty
+typedef SOCKET           SOCKET_ID;
+
+#else
+
+typedef int              SOCKET_ID;
+
+#endif
+
+#include "list.h"
+
+namespace Coroutines {
+
+  struct TWatchedEvent;
+
+  namespace internal {
+
+    struct TIOEvents {
+
+      struct TEntry {
+        SOCKET_ID       fd;
+        int             mask = 0;
+        TList           waiting_to_read;
+        TList           waiting_to_write;
+      };
+
+      typedef std::vector< TEntry > VDescriptors;
+      SOCKET_ID    max_fd = 0;
+      VDescriptors entries;
+
+      fd_set       rfds, wfds;
+
+      TEntry* find(SOCKET_ID fd) {
+        for (auto& e : entries) {
+          if (e.fd == fd)
+            return &e;
+        }
+        TEntry new_e;
+        new_e.fd = fd;
+        entries.push_back(new_e);
+        return &entries.back();
+      }
+
+    public:
+
+      TIOEvents() {
+        FD_ZERO(&rfds);
+        FD_ZERO(&wfds);
+      }
+
+      enum eMode {
+        TO_READ = 1,
+        TO_WRITE = 2,
+      };
+
+      void add(TWatchedEvent* we);
+      void del(TWatchedEvent* we);
+      int update();
+    };
+  }
+
+}
+
+#endif
