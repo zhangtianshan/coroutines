@@ -1,6 +1,9 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "coroutines/coroutines.h"
 #include <cstdarg>
 #include <cstdio>
+#define WINDOWS_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <Windows.h>
 
 using namespace Coroutines;
@@ -17,9 +20,125 @@ void dbg(const char *fmt, ...) {
   printf("%04d:%02d.%02d %s", (int)now(), current().id, current().age, buf);
 }
 
+#include <vector>
+struct TIOEvents {
+  typedef int TDescriptor;
+
+  struct TEntry {
+    TDescriptor fd;
+    int         mask = 0;
+    THandle     h_coroutine;
+  };
+
+  typedef std::vector< TEntry > VDescriptors;
+  TDescriptor  max_fd = 0;
+  VDescriptors entries;
+
+  fd_set rfds, wfds;
+
+  TEntry* find(int fd) {
+    for (auto& e : entries) {
+      if (e.fd == fd)
+        return &e;
+    }
+    TEntry new_e;
+    new_e.fd = fd;
+    new_e.h_coroutine = current();
+    entries.push_back(new_e);
+    return &entries.back();
+  }
+
+public:
+
+  TIOEvents() {
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+  }
+
+  enum eMode {
+    TO_READ = 1,
+    TO_WRITE = 2,
+    TO_READ_AND_WRITE = 3
+  };
+
+  void add(int fd, eMode mode) {
+    auto e = find(fd);
+    assert(e && e->fd == fd);
+    if (mode == TO_READ) {
+      e->mask |= TO_READ;
+      FD_SET(fd, &rfds);
+    }
+    else {
+      e->mask |= TO_WRITE;
+      FD_SET(fd, &wfds);
+    }
+
+    if (fd > max_fd)
+      max_fd = fd;
+  }
+
+  void del(int fd, eMode mode) {
+    auto e = find(fd);
+    if (!e || e->mask == 0)
+      return;
+    e->mask &= (~mode);
+
+    // Are we removing the largest fd we have?
+    if (e->mask == 0 && e->fd == max_fd) {
+      // Update max_fd when we remove the largest fd defined
+      max_fd = 0;
+      for (auto& e : entries) {
+        if (e.fd > max_fd)
+          max_fd = e.fd;
+      }
+    }
+  }
+
+  int update() {
+
+    // Amount of time to wait
+    timeval tm;
+    tm.tv_sec = 0;
+    tm.tv_usec = 0;
+
+    fd_set fds_to_read, fds_to_write;
+
+    memcpy(&fds_to_read,  &rfds, sizeof(fd_set));
+    memcpy(&fds_to_write, &wfds, sizeof(fd_set));
+
+    // Do a real wait
+    int num_events = 0;
+    int retval = ::select(max_fd + 1, &fds_to_read, &fds_to_write, nullptr, &tm);
+    if (retval > 0) {
+
+      for (auto& e : entries) {
+
+        if (!e.mask)
+          continue;
+
+        // we were waiting a read op, and we can read now...
+        if ((e.mask & TO_READ) && FD_ISSET(e.fd, &fds_to_read)) {
+          notifyIOEvent(e.h_coroutine);
+        }
+
+        if ((e.mask & TO_WRITE) && FD_ISSET(e.fd, &fds_to_write)) {
+          notifyIOEvent(e.h_coroutine);
+        }
+
+      }
+    }
+    return num_events;
+  }
+
+};
+TIOEvents io_events;
+
+
+
 void runUntilAllCoroutinesEnd() {
   while (true) {
     updateCurrentTime(1);
+    io_events.update();
     if (!executeActives())
       break;
   }
@@ -253,15 +372,248 @@ void test_channels_send_from_main() {
 }
 
 // -----------------------------------------------------------
+#include <vector>
+struct TBuffer : public std::vector< uint8_t > {
+  TBuffer(size_t initial_size) {
+    resize(initial_size);
+  }
+};
+
+// ---------------------------------------------------------------
+/*
+typedef size_t IOHandle;
+IOHandle open(const char* filename, const char* mode);
+size_t   read(IOHandle handle, void* where, size_t nbytes);
+void     close(IOHandle handle);
+*/
+
+#include "coroutines/net/net_platform.h"
+#include <io.h>
+#include <sys/types.h> 
+#include <fcntl.h>
+
+typedef SOCKET           SOCKET_ID;
+typedef sockaddr_in      TSockAddress;
+
+class IOHandle {
+  int       fd = -1;
+  bool      isValid() const { return fd > 0; }
+  bool      setNonBlocking();
+public:
+  bool      connect(const TNetAddress &remote_server, int timeout_sec);
+  int       recv(void* dest_buffer, size_t bytes_to_read);
+  bool      send(const void* src_buffer, size_t bytes_to_send);
+  void      close();
+};
+
+bool IOHandle::setNonBlocking() {
+  // set non-blocking
+#if defined(O_NONBLOCK)
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1)
+  flags = 0;
+  auto rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+  u_long iMode = 1;
+  auto rc = ioctlsocket(fd, FIONBIO, &iMode);
+#endif
+  return rc == 0;
+}
+
+
+bool IOHandle::connect(const TNetAddress &remote_server, int timeout_sec) {
+
+  int new_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (new_fd < 0)
+    return false;
+  fd = (int)new_fd;
+
+  setNonBlocking();
+  
+  int rc = ::connect(fd,(const sockaddr*) &remote_server.addr, sizeof(remote_server));
+  if (rc < 0) {
+    int sys_err = WSAGetLastError();
+    if (sys_err == WSAEWOULDBLOCK)
+      return true;
+  }
+
+  return isValid();
+}
+
+void IOHandle::close() {
+  if (isValid()) {
+    ::_close(fd);
+    fd = -1;
+  }
+}
+
+int IOHandle::recv(void* dest_buffer, size_t bytes_to_read) {
+  while (isValid()) {
+    auto bytes_read = ::recv(fd, (char*)dest_buffer, bytes_to_read, 0);
+    if (bytes_read == -1) {
+      if (errno == EAGAIN) {
+        io_events.add(fd, TIOEvents::TO_READ);
+        yield();
+      }
+      else
+        break;
+    }
+    else {
+      return bytes_read;
+    }
+  }
+  return -1;
+}
+
+bool IOHandle::send(const void* src_buffer, size_t bytes_to_send) {
+  size_t total_bytes_sent = 0;
+  while (isValid()) {
+    auto bytes_sent = ::send(fd, ((const char*) src_buffer) + total_bytes_sent, bytes_to_send - total_bytes_sent, 0 );
+    if (bytes_sent == -1) {
+      if (errno == EAGAIN) {
+        io_events.add(fd, TIOEvents::TO_WRITE);
+        yield();
+      }
+      else
+        break;
+    }
+    else {
+      total_bytes_sent += bytes_sent;
+      if (total_bytes_sent == bytes_to_send)
+        return true;
+    }
+  }
+  return false;
+}
+
+#include "coroutines/net/tcp_socket.h"
+
+// ---------------------------------------------------------------
+void test_io() {
+
+  WSADATA wsaData;
+  int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+  TSimpleDemo demo("test_io");
+  auto co1 = start([&]() {
+    //const char* filename = "large.bin";
+
+    TNetAddress addr;
+    addr.fromStr("127.0.0.1", 8080);
+
+    IOHandle s;
+    if (!s.connect(addr, 3))
+      return false;
+
+    const char* request = "GET / HTTP/1.1\r\n"
+      "Connection: Keep - Alive\r\n"
+      "User - Agent : Mozilla / 4.01[en](Win95; I)\r\n"
+      "Host : 192.168.1.7\r\n"
+      "Accept : image / gif, image / x - xbitmap, image / jpeg, image / pjpeg, */*\r\n"
+      "Accept-Language: en\r\n"
+      "Accept-Charset: iso-8859-1,*,utf-8\r\n"
+      "\r\n";
+    
+    TBuffer b2(32);
+    int bytes_read = s.recv(b2.data(), b2.capacity());
+    if( !bytes_read )
+      return false;
+    b2.resize(bytes_read);
+
+    if (!s.send(request, strlen(request)))
+      return false;
+
+    bool header_complete = false;
+    std::vector< std::string > header_lines;
+    TBuffer b(32);
+    int     unprocessed_bytes = 0;
+    while (!header_complete) {
+      
+      //// read chunk
+      //auto bytes_read = s.recvUpToNBytes(b.data() + unprocessed_bytes, b.capacity() - unprocessed_bytes);
+      //if (!bytes_read)
+      //  break;
+      //unprocessed_bytes += bytes_read;
+      //b.resize(unprocessed_bytes);
+
+      //// Process
+      //auto processed_bytes = 0;
+      //auto p = b.data();
+      //while (processed_bytes < unprocessed_bytes) {
+      //  if (*p != '\r')
+      //    break;
+      //  ++p;
+      //}
+      //if (*p != '\r')
+      //  continue;
+      //++processed_bytes;
+
+      //// save header line
+      //header_lines.push_back((const char*)b.data());
+
+      //// remove header line from temp buffer
+      //memmove(b.data(), b.data() + processed_bytes, unprocessed_bytes - processed_bytes);
+      //unprocessed_bytes -= processed_bytes;
+    }
+
+    //auto f = open(filename, "rb");
+    //while (true) {
+    //  TBuffer b(4096);
+    //  auto bytes_read = read(f, b.data(), b.capacity());
+    //  b.resize(bytes_read);
+    //}
+    //close(f);
+
+    //auto buffer = file::read("input.bin");
+
+
+
+/*
+    int port = 80;
+
+    int fd = anetTcpNonBlockConnect(neterr, "192.168.1.7", port);
+    if (fd == ANET_ERR)
+      return false;
+    anetNonBlock(nullptr, fd);*/
+
+
+    //IOHandle f;
+    //if (!f.open("input.bin", "rb"))
+    //  return false;
+
+    //char buf[256];
+    //int bytes_read = f.read(buf, sizeof(buf));
+
+    //f.close();
+
+
+    /*
+    int si = s_open("input.bin", "rb");
+    int so = s_open("output.bin", "wb");
+    pipe(si, so);
+
+    int si = s_open("input.bin", "rb");
+    int so = s_open([](void* data, size_t data_size) {
+    }, "wb");
+    pipe(si, so);
+    */
+
+    return true;
+  });
+  runUntilAllCoroutinesEnd();
+}
+
+// -----------------------------------------------------------
 int main(int argc, char** argv) {
-  test_demo_yield();
-  test_wait_time();
-  test_wait_co();
-  test_wait_all();
-  //test_wait_keys();
-  test_wait_2_coroutines_with_timeout();
-  test_channels();
-  test_channels_send_from_main();
+  //test_demo_yield();
+  //test_wait_time();
+  //test_wait_co();
+  //test_wait_all();
+  ////test_wait_keys();
+  //test_wait_2_coroutines_with_timeout();
+  //test_channels();
+  //test_channels_send_from_main();
+  test_io();
   return 0;
 }
 

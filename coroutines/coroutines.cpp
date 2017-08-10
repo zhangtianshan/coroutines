@@ -62,7 +62,7 @@ namespace Coroutines {
         co->returnToCaller();
       }
 
-      static const size_t default_stack_size = 16 * 1024;
+      static const size_t default_stack_size = 64 * 1024;
       void createStack() {
         stack = ::create_fcontext_stack(default_stack_size);
       }
@@ -261,6 +261,21 @@ namespace Coroutines {
     waitAll(handles.begin(), handles.end());
   }
 
+  void waitIOEvent() {
+    auto co = internal::byHandle(current());
+    assert(co);
+    co->state = internal::TCoro::WAITING_FOR_EVENT;
+    co->event_waking_me_up = nullptr;
+    yield();
+  }
+
+  void notifyIOEvent(THandle h) {
+    auto co = internal::byHandle(h);
+    if (!co)
+      return;
+    co->state = internal::TCoro::RUNNING;
+  }
+
   // --------------------------------------------------------------
   int wait(TWatchedEvent* watched_events, int nwatched_events, TTimeDelta timeout) {
     assert(isHandle(current()));
@@ -410,6 +425,10 @@ namespace Coroutines {
 
   // --------------------------------------------
   int internal::TScheduler::runActives() {
+
+    // Check IO events
+
+
     nactives = 0;
     next_idx = 0;
     while (next_idx < coros.size()) {

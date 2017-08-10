@@ -82,6 +82,9 @@ namespace Coroutines {
   // wait while h is a coroutine handle
   void wait(THandle h);
 
+  void waitIOEvent();
+  void notifyIOEvent(THandle h);
+
   // We want to wait all the items in a range... do it
   template< typename iterator >
   void waitAll(iterator beg, iterator end) {
