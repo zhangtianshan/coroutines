@@ -152,10 +152,7 @@
   <ItemGroup>
     <ClCompile Include="..\coroutines\channel.cpp" />
     <ClCompile Include="..\coroutines\coroutines.cpp" />
-    <ClCompile Include="..\coroutines\net\ae.c" />
-    <ClCompile Include="..\coroutines\net\anet.c" />
-    <ClCompile Include="..\coroutines\net\net_platform.cpp" />
-    <ClCompile Include="..\coroutines\net\tcp_socket.cpp" />
+    <ClCompile Include="..\coroutines\io_channel.cpp" />
     <ClCompile Include="..\coroutines\timeline.cpp" />
     <ClCompile Include="sample00.cpp" />
   </ItemGroup>
@@ -166,15 +163,10 @@
     <ClInclude Include="..\coroutines\channel.h" />
     <ClInclude Include="..\coroutines\coroutines.h" />
     <ClInclude Include="..\coroutines\fcontext\fcontext.h" />
+    <ClInclude Include="..\coroutines\io_address.h" />
+    <ClInclude Include="..\coroutines\io_channel.h" />
     <ClInclude Include="..\coroutines\io_events.h" />
     <ClInclude Include="..\coroutines\list.h" />
-    <ClInclude Include="..\coroutines\net\address.h" />
-    <ClInclude Include="..\coroutines\net\ae.h" />
-    <ClInclude Include="..\coroutines\net\anet.h" />
-    <ClInclude Include="..\coroutines\net\net.h" />
-    <ClInclude Include="..\coroutines\net\net_platform.h" />
-    <ClInclude Include="..\coroutines\net\net_sys_defines.h" />
-    <ClInclude Include="..\coroutines\net\tcp_socket.h" />
     <ClInclude Include="..\coroutines\timeline.h" />
     <ClInclude Include="..\coroutines\wait.h" />
   </ItemGroup>

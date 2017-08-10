@@ -4,17 +4,21 @@
 #include <vector>
 #include <cassert>
 
+// -----------------------------------------------------------
 #ifdef _WIN32
 
-#define WINDOWS_LEAN_AND_MEAN
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <winsock2.h>             // fd_set Familty
-typedef SOCKET           SOCKET_ID;
+#include <ws2tcpip.h>
 
-#else
+typedef SOCKET           SOCKET_ID;
+typedef sockaddr_in      TSockAddress;
+
+#else     // -----------------------------------------------------------
 
 typedef int              SOCKET_ID;
 
-#endif
+#endif    // -----------------------------------------------------------
 
 #include "list.h"
 

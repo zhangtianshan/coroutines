@@ -2,9 +2,7 @@
 #include "coroutines/coroutines.h"
 #include <cstdarg>
 #include <cstdio>
-#define WINDOWS_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <Windows.h>
+#include "coroutines/io_channel.h"
 
 using namespace Coroutines;
 
@@ -265,107 +263,6 @@ struct TBuffer : public std::vector< uint8_t > {
 };
 
 // ---------------------------------------------------------------
-#include "coroutines/net/net_platform.h"
-#include <io.h>
-#include <sys/types.h> 
-#include <fcntl.h>
-
-typedef sockaddr_in      TSockAddress;
-
-class IOHandle {
-  SOCKET_ID  fd = ~(SOCKET_ID(0));
-  bool       isValid() const { return fd > 0; }
-  bool       setNonBlocking();
-public:
-  bool       connect(const TNetAddress &remote_server, int timeout_sec);
-  int        recv(void* dest_buffer, size_t bytes_to_read);
-  bool       send(const void* src_buffer, size_t bytes_to_send);
-  void       close();
-};
-
-bool IOHandle::setNonBlocking() {
-  // set non-blocking
-#if defined(O_NONBLOCK)
-  int flags = fcntl(fd, F_GETFL, 0);
-  if (flags == -1)
-  flags = 0;
-  auto rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#else
-  u_long iMode = 1;
-  auto rc = ioctlsocket(fd, FIONBIO, &iMode);
-#endif
-  return rc == 0;
-}
-
-
-bool IOHandle::connect(const TNetAddress &remote_server, int timeout_sec) {
-
-  auto new_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (new_fd < 0)
-    return false;
-  fd = new_fd;
-
-  setNonBlocking();
-  
-  int rc = ::connect(fd,(const sockaddr*) &remote_server.addr, sizeof(remote_server));
-  if (rc < 0) {
-    int sys_err = WSAGetLastError();
-    if (sys_err == WSAEWOULDBLOCK)
-      return true;
-  }
-
-  return isValid();
-}
-
-void IOHandle::close() {
-  if (isValid()) {
-    ::closesocket(fd);
-    fd = -1;
-  }
-}
-
-int IOHandle::recv(void* dest_buffer, size_t bytes_to_read) {
-  while (isValid()) {
-    auto bytes_read = ::recv(fd, (char*)dest_buffer, bytes_to_read, 0);
-    if (bytes_read == -1) {
-      int err = WSAGetLastError();
-      if (err == WSAEWOULDBLOCK) {
-        dbg("Recv failed err = %d (vs %d). Going to sleep.\n", err, WSAEWOULDBLOCK);
-        TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_READ);
-        wait(&we, 1);
-      }
-      else
-        break;
-    }
-    else {
-      return bytes_read;
-    }
-  }
-  return -1;
-}
-
-bool IOHandle::send(const void* src_buffer, size_t bytes_to_send) {
-  size_t total_bytes_sent = 0;
-  while (isValid()) {
-    auto bytes_sent = ::send(fd, ((const char*) src_buffer) + total_bytes_sent, bytes_to_send - total_bytes_sent, 0 );
-    if (bytes_sent == -1) {
-      if (errno == WSAEWOULDBLOCK) {
-        TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_WRITE);
-        wait(&we, 1);
-      }
-      else
-        break;
-    }
-    else {
-      total_bytes_sent += bytes_sent;
-      if (total_bytes_sent == bytes_to_send)
-        return true;
-    }
-  }
-  return false;
-}
-
-#include "coroutines/net/tcp_socket.h"
 
 // ---------------------------------------------------------------
 void test_io() {
@@ -377,9 +274,9 @@ void test_io() {
   auto co1 = start([&]() {
 
     TNetAddress addr;
-    addr.fromStr("127.0.0.1", 8080);
+    addr.fromStr("192.168.10.105", 8080);
 
-    IOHandle s;
+    CIOChannel s;
     if (!s.connect(addr, 3))
       return false;
 

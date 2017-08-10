@@ -11,17 +11,8 @@
     <ClCompile Include="..\coroutines\channel.cpp">
       <Filter>coroutines</Filter>
     </ClCompile>
-    <ClCompile Include="..\coroutines\net\anet.c">
-      <Filter>coroutines\net</Filter>
-    </ClCompile>
-    <ClCompile Include="..\coroutines\net\ae.c">
-      <Filter>coroutines\net</Filter>
-    </ClCompile>
-    <ClCompile Include="..\coroutines\net\net_platform.cpp">
-      <Filter>coroutines\net</Filter>
-    </ClCompile>
-    <ClCompile Include="..\coroutines\net\tcp_socket.cpp">
-      <Filter>coroutines\net</Filter>
+    <ClCompile Include="..\coroutines\io_channel.cpp">
+      <Filter>coroutines</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -30,9 +21,6 @@
     </Filter>
     <Filter Include="coroutines\fcontext">
       <UniqueIdentifier>{76e12dc7-38e3-48a4-885b-5301552b36e0}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="coroutines\net">
-      <UniqueIdentifier>{2650c86b-e6ee-4958-b93f-264656cd09a7}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -57,28 +45,13 @@
     <ClInclude Include="..\coroutines\channel.h">
       <Filter>coroutines</Filter>
     </ClInclude>
-    <ClInclude Include="..\coroutines\net\anet.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\ae.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\net.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\address.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\net_platform.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\net_sys_defines.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
-    <ClInclude Include="..\coroutines\net\tcp_socket.h">
-      <Filter>coroutines\net</Filter>
-    </ClInclude>
     <ClInclude Include="..\coroutines\io_events.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\io_channel.h">
+      <Filter>coroutines</Filter>
+    </ClInclude>
+    <ClInclude Include="..\coroutines\io_address.h">
       <Filter>coroutines</Filter>
     </ClInclude>
   </ItemGroup>
