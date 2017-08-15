@@ -50,7 +50,9 @@ namespace Coroutines {
       static void ctxEntryFn(fcontext_transfer_t t) {
         TCoro* co = reinterpret_cast<TCoro*>(t.data);
         assert(co);
-        co->runMain(t);
+        co->caller_ctx = t;
+        co->runUserFn();
+        co->epilogue();
       }
 
       void runUserFn() {
@@ -74,9 +76,7 @@ namespace Coroutines {
         ip.data = this;
       }
       
-      void runMain(fcontext_transfer_t t) {
-        caller_ctx = t;
-        runUserFn();
+      void epilogue() {
         markAsFree();
         wakeOthersWaitingForMe();
         returnToCaller();
@@ -87,7 +87,6 @@ namespace Coroutines {
         // This will invalidate the current version of the handle
         this_handle.age++;
         coros_free.push_back(this_handle);
-        // epilogue
         state = FREE;
       }
 
@@ -181,6 +180,7 @@ namespace Coroutines {
     void dump(const char* title) {
       //printf("Dump FirstFree: %d LastFree:%d FirstInUse:%d - LastInUse:%d %s\n", first_free, last_free, first_in_use, last_in_use, title);
       printf("Dump %s\n", title);
+      printf("  Size of Co(%ld)\n", (int)sizeof( TCoro ));
       int idx = 0;
       for (auto& co : coros) {
         printf("%04x : state:%d\n", idx, co->state);
@@ -214,6 +214,13 @@ namespace Coroutines {
     co->returnToCaller();
   }
 
+  // --------------------------------------------
+  void exitCo() {
+    assert(isHandle(current()));
+    auto co = internal::byHandle(current());
+    assert(co);
+    co->epilogue();
+  }
 
   // -------------------------------
   // WAIT --------------------------
