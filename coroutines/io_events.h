@@ -8,7 +8,7 @@
 #ifdef _WIN32
 
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
-#include <winsock2.h>             // fd_set Familty
+#include <winsock2.h>             // fd_set Family
 #include <ws2tcpip.h>
 
 typedef SOCKET           SOCKET_ID;

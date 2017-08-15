@@ -13,6 +13,11 @@ namespace Coroutines {
 
     // -----------------------------------------
     THandle h_current;
+    struct  TCoro;
+
+    TIOEvents              io_events;
+    std::vector< TCoro* >  coros;
+    std::vector< THandle > coros_free;
 
     // -----------------------------------------
     struct TCoro {
@@ -27,8 +32,6 @@ namespace Coroutines {
 
       eState                    state = UNINITIALIZED;
       THandle                   this_handle;
-      //uint16_t                  prev_id = INVALID_ID;            // Only used when active
-      //uint16_t                  next_id = 0;
 
       // Wait
       TWaitConditionFn          must_wait;
@@ -44,23 +47,16 @@ namespace Coroutines {
       fcontext_stack_t          stack;
       fcontext_transfer_t       caller_ctx;
 
+      static void ctxEntryFn(fcontext_transfer_t t) {
+        TCoro* co = reinterpret_cast<TCoro*>(t.data);
+        assert(co);
+        co->runMain(t);
+      }
+
       void runUserFn() {
         assert(boot_fn);
         assert(boot_fn_arg);
         (*boot_fn)(boot_fn_arg);
-
-        // epilogue
-        state = FREE;
-        this_handle.age++;
-      }
-
-      static void ctxEntryFn(fcontext_transfer_t t) {
-        TCoro* co = reinterpret_cast<TCoro*>(t.data);
-        assert(co);
-        co->caller_ctx = t;
-        co->runUserFn();
-        co->wakeOthersWaitingForMe();
-        co->returnToCaller();
       }
 
       static const size_t default_stack_size = 64 * 1024;
@@ -76,6 +72,23 @@ namespace Coroutines {
       void resetIP() {
         ip.ctx = make_fcontext( stack.sptr, stack.ssize, &ctxEntryFn );
         ip.data = this;
+      }
+      
+      void runMain(fcontext_transfer_t t) {
+        caller_ctx = t;
+        runUserFn();
+        markAsFree();
+        wakeOthersWaitingForMe();
+        returnToCaller();
+      }
+
+      void markAsFree() {
+        assert(state == RUNNING);
+        // This will invalidate the current version of the handle
+        this_handle.age++;
+        coros_free.push_back(this_handle);
+        // epilogue
+        state = FREE;
       }
 
       void resume() {
@@ -100,13 +113,6 @@ namespace Coroutines {
 
     };
 
-    TIOEvents            io_events;
-    std::vector< TCoro > coros;
-    //uint16_t             first_free = 0;
-    //uint16_t             last_free = 0;
-    //uint16_t             first_in_use = INVALID_ID;
-    //uint16_t             last_in_use = INVALID_ID;
-
     // ----------------------------------------------------------
     TCoro* byHandle(THandle h) {
 
@@ -115,7 +121,7 @@ namespace Coroutines {
         return nullptr;
 
       // if what we found matches the current age, we are a valid co
-      TCoro* c = &coros[h.id];
+      TCoro* c = coros[h.id];
       assert(c->this_handle.id == h.id);
       if (h.age != c->this_handle.age)
         return nullptr;
@@ -125,56 +131,34 @@ namespace Coroutines {
     // ----------------------------------------------------------
     TCoro* findFree() {
 
-      // Right now, search linearly for a free one
-      for (auto& co : coros) {
-        if (co.state != TCoro::FREE && co.state != TCoro::UNINITIALIZED)
-          continue;
-        co.state = TCoro::RUNNING;
-        return &co;
+      TCoro* co = nullptr;
+
+      // The list is empty?, create a new co
+      if (coros_free.empty()) {
+        co = new TCoro;
+        assert(co->state == TCoro::UNINITIALIZED);
+        auto  idx = coros.size();
+        co->this_handle.id = (uint16_t)idx;
+        co->this_handle.age = 1;
+        co->createStack();
+        coros.push_back(co);
+      }
+      else {
+        // Else, use one of the free list
+        THandle h = coros_free.back();
+        co = byHandle(h);
+        assert(co);
+        coros_free.pop_back();
+        assert(co->state == TCoro::FREE);
+        assert(coros[co->this_handle.id] == co);
       }
 
-      return nullptr;
-    }
-
-    // ----------------------------------------------------------
-    void initialize() {
-
-      coros.resize(8);
-      int idx = 0;
-      for (auto& co : coros) {
-        co.this_handle.id = idx;
-        co.this_handle.age = 1;
-
-        //if (idx > 0)
-        //  co.prev_id = idx - 1;
-        //else
-        //  co.prev_id = INVALID_ID;
-
-        //if (idx != coros.size() - 1)
-        //  co.next_id = idx + 1;
-        //else
-        //  co.next_id = INVALID_ID;
-
-        co.createStack();
-
-        ++idx;
-      }
-      //first_free = 0;
-      //last_free = idx - 1;
-      //dump("OnBoot");
-
-      //auto co_main = findFree();
-      //assert(co_main);
-      //co_main->initAsMain();
-      //h_main = co_main->this_handle;
-      //h_current = h_main;
+      co->state = TCoro::RUNNING;
+      return co;
     }
 
     // --------------------------
     THandle start(TBootFn boot_fn, void* boot_fn_arg) {
-
-      if (coros.empty())
-        initialize();
 
       TCoro* co_new = findFree();
       assert(co_new);                               // Run out of free coroutines slots
@@ -199,7 +183,7 @@ namespace Coroutines {
       printf("Dump %s\n", title);
       int idx = 0;
       for (auto& co : coros) {
-        printf("%04x : state:%d\n", idx, co.state);
+        printf("%04x : state:%d\n", idx, co->state);
         ++idx;
       }
     }
@@ -207,9 +191,7 @@ namespace Coroutines {
     // --------------------------------------------
     struct TScheduler {
       int nactives = 0;
-      int next_idx = 0;
       int runActives();
-      bool runNextReady();
     };
     TScheduler           scheduler;
   }
@@ -523,43 +505,37 @@ namespace Coroutines {
   // --------------------------------------------
   int internal::TScheduler::runActives() {
 
-    // Check IO events
+    int nactives = 0;
 
-
-    nactives = 0;
-    next_idx = 0;
-    while (next_idx < coros.size()) {
-      if (runNextReady())
-        ++nactives;
-    }
-    return nactives;
-  }
-
-  bool internal::TScheduler::runNextReady() {
-    // Find one ready
-    while (next_idx < coros.size()) {
-
-      auto& co = coros[next_idx];
-      ++next_idx;
-
-      if (co.state == TCoro::FREE || co.state == TCoro::UNINITIALIZED)
+    for (auto co : coros) {
+      
+      // Skip the free's
+      if (co->state == TCoro::FREE)
         continue;
 
-      if (co.state == TCoro::WAITING_FOR_EVENT)
-        return true;
-
-      if (co.state == TCoro::WAITING_FOR_CONDITION) {
-        if (co.must_wait())
-          return true;
-        co.state = TCoro::RUNNING;
+      if (co->state == TCoro::WAITING_FOR_EVENT) {
+        ++nactives;
+        continue;
       }
 
-      assert(co.state == internal::TCoro::RUNNING);
-      co.resume();
+      // The 'waiting for condition' must be checked on each try/run
+      if (co->state == TCoro::WAITING_FOR_CONDITION) {
+        if (co->must_wait())
+          continue;
+        co->state = TCoro::RUNNING;
+      }
+      else {
+        assert(co->state == TCoro::RUNNING);
+      }
+      
+      co->resume();
 
-      return true;
+      if (co->state == TCoro::RUNNING || co->state == TCoro::WAITING_FOR_CONDITION)
+        ++nactives;
+
     }
-    return false;
+
+    return nactives;
   }
 
 }

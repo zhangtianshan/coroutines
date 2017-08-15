@@ -72,10 +72,11 @@ namespace Coroutines {
     }
   }
 
-  int CIOChannel::recv(void* dest_buffer, size_t bytes_to_read) {
+  bool CIOChannel::recv(void* dest_buffer, size_t bytes_to_read) {
+    size_t total_bytes_read = 0;
     while (isValid()) {
-      auto bytes_read = sys_recv(fd, (char*)dest_buffer, bytes_to_read, 0);
-      if (bytes_read == -1) {
+      auto new_bytes_read = sys_recv(fd, (char*)dest_buffer, (int)( bytes_to_read - total_bytes_read ), 0);
+      if (new_bytes_read == -1) {
         int err = sys_errno;
         if (err == SYS_ERR_WOULD_BLOCK) {
           TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_READ);
@@ -85,7 +86,28 @@ namespace Coroutines {
           break;
       }
       else {
-        return bytes_read;
+        total_bytes_read += new_bytes_read;
+        if(total_bytes_read == bytes_to_read)
+          return true;
+      }
+    }
+    return false;
+  }
+
+  int CIOChannel::recvUpTo(void* dest_buffer, size_t bytes_to_read) {
+    while (isValid()) {
+      auto new_bytes_read = sys_recv(fd, (char*)dest_buffer, (int)(bytes_to_read), 0);
+      if (new_bytes_read == -1) {
+        int err = sys_errno;
+        if (err == SYS_ERR_WOULD_BLOCK) {
+          TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_READ);
+          wait(&we, 1);
+        }
+        else
+          break;
+      }
+      else {
+        return new_bytes_read;
       }
     }
     return -1;
@@ -94,7 +116,7 @@ namespace Coroutines {
   bool CIOChannel::send(const void* src_buffer, size_t bytes_to_send) {
     size_t total_bytes_sent = 0;
     while (isValid()) {
-      auto bytes_sent = sys_send(fd, ((const char*)src_buffer) + total_bytes_sent, bytes_to_send - total_bytes_sent, 0);
+      auto bytes_sent = sys_send(fd, ((const char*)src_buffer) + total_bytes_sent, (int) ( bytes_to_send - total_bytes_sent ), 0);
       if (bytes_sent == -1) {
         if (errno == SYS_ERR_WOULD_BLOCK) {
           TWatchedEvent we(fd, EVT_SOCKET_IO_CAN_WRITE);
