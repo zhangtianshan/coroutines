@@ -15,9 +15,11 @@ namespace Coroutines {
     THandle h_current;
     struct  TCoro;
 
+    // --------------------------------------------
     TIOEvents              io_events;
     std::vector< TCoro* >  coros;
     std::vector< THandle > coros_free;
+    int runActives();
 
     // -----------------------------------------
     struct TCoro {
@@ -188,12 +190,6 @@ namespace Coroutines {
       }
     }
 
-    // --------------------------------------------
-    struct TScheduler {
-      int nactives = 0;
-      int runActives();
-    };
-    TScheduler           scheduler;
   }
 
   // --------------------------
@@ -254,6 +250,9 @@ namespace Coroutines {
   // --------------------------------------------------------------
   int wait(TWatchedEvent* watched_events, int nwatched_events, TTimeDelta timeout) {
     assert(isHandle(current()));
+
+    auto co = internal::byHandle(current());
+    assert(co);
 
     int n = nwatched_events;
     auto we = watched_events;
@@ -323,8 +322,6 @@ namespace Coroutines {
     }
 
     // Put ourselves to sleep
-    auto co = internal::byHandle(current());
-    assert(co);
     co->state = internal::TCoro::WAITING_FOR_EVENT;
     co->event_waking_me_up = nullptr;
     
@@ -506,11 +503,11 @@ namespace Coroutines {
     
     internal::io_events.update();
 
-    return internal::scheduler.runActives();
+    return internal::runActives();
   }
 
   // --------------------------------------------
-  int internal::TScheduler::runActives() {
+  int internal::runActives() {
 
     int nactives = 0;
 
